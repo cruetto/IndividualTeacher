@@ -3,11 +3,12 @@ import { Button, Offcanvas } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 interface Props {
-  quizName: string[];
-  onSelectItem: (answer: string) => void;
+  quizTitleList: string[];
+  idList: number[];
+  onSelectTitleItem: (id: number) => void;
 }
 
-const QuizManager = ({ quizName, onSelectItem }: Props) => {
+const QuizManager = ({ quizTitleList, idList, onSelectTitleItem }: Props) => {
   const [show, setShow] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
@@ -68,20 +69,20 @@ const QuizManager = ({ quizName, onSelectItem }: Props) => {
           </Button>
 
           <ul className="list-group">
-            {quizName.map((quizName, index) => (
+            {quizTitleList.map((quizTitleList, index) => (
               <li
                 className={
                   selectedIndex === index
                     ? "list-group-item active"
                     : "list-group-item"
                 }
-                key={quizName}
+                key={quizTitleList}
                 onClick={() => {
                   setSelectedIndex(index);
-                  onSelectItem(quizName);
+                  onSelectTitleItem(idList[index]);
                 }}
               >
-                {quizName}
+                {quizTitleList}
               </li>
             ))}
           </ul>

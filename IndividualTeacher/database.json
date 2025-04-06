@@ -1,0 +1,237 @@
+[
+  {
+    "id": "1",
+    "title": "BigData processing",
+    "questions": [
+      {
+        "type": "simple_question",
+        "question_text": "What does HDFS stand for in the context of Big Data?",
+        "answers": [
+          {
+            "answer_text": "High Definition File System",
+            "correct": false
+          },
+          {
+            "answer_text": "Hadoop Distributed File System",
+            "correct": true
+          },
+          {
+            "answer_text": "Hierarchical Data Format System",
+            "correct": false
+          },
+          {
+            "answer_text": "High Dimensional Feature Selection",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What does RDD stand for in Big Data?",
+        "answers": [
+          {
+            "answer_text": "Relational Data Division",
+            "correct": false
+          },
+          {
+            "answer_text": "Resilient Distributed Dataset",
+            "correct": true
+          },
+          {
+            "answer_text": "Random Data Distribution",
+            "correct": false
+          },
+          {
+            "answer_text": "Residual Data Determination",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What is MapReduce?",
+        "answers": [
+          {
+            "answer_text": "A data processing tool",
+            "correct": true
+          },
+          {
+            "answer_text": "A data visualization tool",
+            "correct": false
+          },
+          {
+            "answer_text": "A data storage tool",
+            "correct": false
+          },
+          {
+            "answer_text": "A data transformation tool",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What is Spark in the context of Big Data?",
+        "answers": [
+          {
+            "answer_text": "A data storage system",
+            "correct": false
+          },
+          {
+            "answer_text": "A data processing system",
+            "correct": true
+          },
+          {
+            "answer_text": "A data visualization system",
+            "correct": false
+          },
+          {
+            "answer_text": "A data retrieval system",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What does 'lazyness' refer to in the context of Big Data?",
+        "answers": [
+          {
+            "answer_text": "The delay in data processing",
+            "correct": false
+          },
+          {
+            "answer_text": "The delay in data retrieval",
+            "correct": false
+          },
+          {
+            "answer_text": "The concept of delaying computations until necessary",
+            "correct": true
+          },
+          {
+            "answer_text": "The concept of delaying data storage",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What does 'transformation' mean in the context of Big Data?",
+        "answers": [
+          {
+            "answer_text": "Changing the format of data",
+            "correct": true
+          },
+          {
+            "answer_text": "Moving data from one location to another",
+            "correct": false
+          },
+          {
+            "answer_text": "Converting unstructured data into structured data",
+            "correct": false
+          },
+          {
+            "answer_text": "None of the above",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What does 'action' mean in the context of Big Data?",
+        "answers": [
+          {
+            "answer_text": "The process of executing a task",
+            "correct": true
+          },
+          {
+            "answer_text": "The process of storing data",
+            "correct": false
+          },
+          {
+            "answer_text": "The process of retrieving data",
+            "correct": false
+          },
+          {
+            "answer_text": "The process of deleting data",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What is DAG in the context of Big Data?",
+        "answers": [
+          {
+            "answer_text": "Data Aggregation Graph",
+            "correct": false
+          },
+          {
+            "answer_text": "Directed Acyclic Graph",
+            "correct": true
+          },
+          {
+            "answer_text": "Data Analysis Group",
+            "correct": false
+          },
+          {
+            "answer_text": "Directed Application Graph",
+            "correct": false
+          }
+        ]
+      }
+    ]
+  },
+
+
+
+  {
+    "id": "2",
+    "title": "Python",
+    "questions": [
+      {
+        "type": "simple_question",
+        "question_text": "What does CPU stand for?",
+        "answers": [
+          {
+            "answer_text": "Central Processing Unit",
+            "correct": true
+          },
+          {
+            "answer_text": "Central Programming Unit",
+            "correct": false
+          },
+          {
+            "answer_text": "Computer Personal Unit",
+            "correct": false
+          },
+          {
+            "answer_text": "Centralized Processing Unit",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "type": "simple_question",
+        "question_text": "What does RAM stand for?",
+        "answers": [
+          {
+            "answer_text": "Random Access Memory",
+            "correct": true
+          },
+          {
+            "answer_text": "Read Access Memory",
+            "correct": false
+          },
+          {
+            "answer_text": "Rapid Access Memory",
+            "correct": false
+          },
+          {
+            "answer_text": "Randomized Access Memory",
+            "correct": false
+          }
+        ]
+      }
+    ]
+  }
+]
