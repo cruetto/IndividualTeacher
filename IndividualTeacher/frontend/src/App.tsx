@@ -1,132 +1,122 @@
-  // // Handler for the "Add Quiz" form submission
-  // const handleAddQuiz = async (e: React.FormEvent<HTMLFormElement>) => {
-  //   e.preventDefault(); // Prevent default page reload
-  //   if (!newQuizTitle.trim()) return; // Basic validation
-
-  //   try {
-  //       console.log(`Adding quiz with title: ${newQuizTitle}`);
-  //       // Send POST request to the backend
-  //       const response = await axios.post<QuizData>(`${API_BASE_URL}/api/quizzes`, {
-  //           title: newQuizTitle,
-  //           // Add other fields if your backend expects them (e.g., question_count: 0)
-  //       });
-  //       console.log('Quiz added successfully:', response.data);
-
-  //       // Option 1: Add the new quiz directly to the state (optimistic/direct update)
-  //       // setQuizzes([...quizzes, response.data]);
-
-  //       // Option 2: Refetch the entire list from the backend (simpler, ensures consistency)
-  //       fetchQuizzes();
-
-  //       setNewQuizTitle(''); // Clear the input field
-  //       setError(null); // Clear any previous errors
-
-  //   } catch (err) {
-  //       console.error("Error adding quiz:", err);
-  //       let message = 'Failed to add quiz.';
-  //       if (axios.isAxiosError(err)) {
-  //         message = err.response?.data?.error || err.message || message;
-  //       } else if (err instanceof Error) {
-  //         message = err.message;
-  //       }
-  //       setError(message); // Display error to the user
-  //   }
-  // };
-
-
-
 // frontend/src/App.tsx
-import { useState, useEffect } from 'react'; // Import hooks
-import axios from 'axios'; // Import axios for HTTP requests
+import { useState, useEffect, useCallback } from 'react'; // Import useCallback
+import axios from 'axios';
 
 import ChatApp from './components/Chat';
 import Quiz from './components/Quiz';
 import QuizManager from './components/QuizManager';
+import { QuizData, Question } from './interfaces/interfaces.ts';
 
-// Import your QuizData interface for json parsing
-import { QuizData} from './interfaces/interfaces.ts'
+const API_BASE_URL = 'http://localhost:5001';
 
-// Define the base URL for your backend API
-// Make sure this matches the address and port your Flask backend is running on!
-const API_BASE_URL = 'http://localhost:5001'; // Example: Adjust if your backend runs elsewhere
-
-// Define an interface for the Quiz object structure coming from the backend
-
-
+// Define a type for storing answers across multiple quizzes
+// Key: Quiz ID (number), Value: Array of selected answer indices (number[])
+type AllUserAnswers = Record<number, number[]>;
 
 function App() {
-  // --- State Variables ---
-  // State to hold the list of quizzes fetched from the backend
-  const [quizzes, setQuizzes] = useState<QuizData[]>([]); // Use the interface for type safety
-  // State to track loading status
-  const [currentQuiz, setCurrentQuiz] = useState<QuizData>();
-
+  const [quizzes, setQuizzes] = useState<QuizData[]>([]);
+  const [currentQuiz, setCurrentQuiz] = useState<QuizData | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
-  // State to hold potential errors during fetch
   const [error, setError] = useState<string | null>(null);
 
-
-
+  // State to store answers for ALL quizzes
+  const [allUserAnswers, setAllUserAnswers] = useState<AllUserAnswers>({});
 
   // --- Data Fetching ---
-  // Function to fetch quizzes from the backend API
   const fetchQuizzes = async () => {
-    setLoading(true); // Start loading
-    setError(null);   // Clear previous errors
+    setLoading(true);
+    setError(null);
+    setAllUserAnswers({}); // Reset answers when fetching all quizzes
     try {
-
       console.log(`Fetching quizzes from: ${API_BASE_URL}/api/quizzes`);
-      const response = await axios.get<QuizData[]>(`${API_BASE_URL}/api/quizzes`); // Specify expected data type
+      const response = await axios.get<QuizData[]>(`${API_BASE_URL}/api/quizzes`);
       console.log('API Response:', response.data);
-      setQuizzes(response.data); // Update state with fetched data
-      setCurrentQuiz(response.data[0]); // Set the first quiz as the current quiz
+      const fetchedQuizzes = response.data || [];
+      setQuizzes(fetchedQuizzes);
 
-    } 
-    catch (err) {
-
+      if (fetchedQuizzes.length > 0) {
+        const firstQuiz = fetchedQuizzes[0];
+        setCurrentQuiz(firstQuiz);
+        // Initialize answers for the first quiz if not already present (though reset above)
+        initializeAnswersForQuiz(firstQuiz.id, firstQuiz.questions);
+      } else {
+        setCurrentQuiz(undefined);
+        console.warn("No quizzes found.");
+      }
+    } catch (err) {
       console.error("Error fetching quizzes:", err);
-
-      // Try to get a more specific error message
       let message = 'Failed to fetch quizzes.';
       if (axios.isAxiosError(err)) {
         message = err.response?.data?.error || err.message || message;
-      } 
-      else if (err instanceof Error) {
+      } else if (err instanceof Error) {
         message = err.message;
       }
       setError(message);
-    } 
-    finally {
-
-      setLoading(false); // Stop loading regardless of success or error
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Helper function to initialize answer array for a specific quiz
+  const initializeAnswersForQuiz = useCallback((quizId: number, questions: Question[]) => {
+    setAllUserAnswers(prevAnswers => {
+      if (!prevAnswers[quizId]) {
+        console.log(`Initializing answers for quiz ${quizId}`);
+        return {
+          ...prevAnswers,
+          [quizId]: Array(questions.length).fill(-1), // -1 means unanswered
+        };
+      }
+      return prevAnswers; // Already initialized
+    });
+  }, []); // No dependencies, it's a pure function based on arguments
 
-
-  // useEffect hook to call fetchQuizzes when the component mounts
   useEffect(() => {
     fetchQuizzes();
-    
-  }, []); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Fetch on mount
 
   // --- Event Handlers ---
-  // Handler for selecting a quiz from QuizManager (adapt as needed)
   const handleSelectQuiz = (id: number) => {
-    setCurrentQuiz(quizzes.find(quiz => quiz.id === id)); // Find and set the selected quiz
-    console.log("Selected Quiz ID:", id);
+    const selected = quizzes.find(quiz => quiz.id === id);
+    if (selected) {
+      setCurrentQuiz(selected);
+      // Ensure answers are initialized for the newly selected quiz
+      initializeAnswersForQuiz(selected.id, selected.questions);
+      console.log("Selected Quiz ID:", id);
+    }
   };
 
+  // Callback for the Quiz component to update the central answer state
+  // Use useCallback to prevent unnecessary re-renders of Quiz component
+  const handleAnswerUpdate = useCallback((quizId: number, questionIndex: number, answerIndex: number) => {
+    setAllUserAnswers(prevAnswers => {
+      // Ensure the quiz entry exists (should be guaranteed by initializeAnswersForQuiz)
+      const currentQuizAnswers = prevAnswers[quizId] ? [...prevAnswers[quizId]] : Array(quizzes.find(q => q.id === quizId)?.questions.length ?? 0).fill(-1);
 
-  const handleSelectAnswer = (answer: string) => {
-    console.log("Selected Answer:", answer);
-  };
+      // Create a new array with the updated answer
+      currentQuizAnswers[questionIndex] = answerIndex;
+
+      // Return the updated state object
+      return {
+        ...prevAnswers,
+        [quizId]: currentQuizAnswers,
+      };
+    });
+     console.log(`Updated answer for Quiz ${quizId}, Question ${questionIndex + 1}: Index ${answerIndex}`);
+  }, [quizzes]); // Dependency: quizzes might be needed if lengths change dynamically, though less likely here. Added for safety.
+
 
   // --- Render Logic ---
+  // Get the answers for the *currently selected* quiz
+  const currentQuizAnswers = currentQuiz ? allUserAnswers[currentQuiz.id] : undefined;
+
   return (
     <>
-      {/* Display Loading or Error State */}
-      {!loading && !error && currentQuiz != undefined && (
+      {loading && <p style={{ textAlign: 'center', marginTop: '20px' }}>Loading quizzes...</p>}
+      {error && <p style={{ textAlign: 'center', color: 'red', marginTop: '20px' }}>Error: {error}</p>}
+
+      {!loading && !error && currentQuiz !== undefined && currentQuizAnswers !== undefined && (
         <>
           <h1 style={{ textAlign: 'center' }}>
             {currentQuiz.title}
@@ -137,15 +127,25 @@ function App() {
             onSelectTitleItem={handleSelectQuiz}
           />
 
-
           <Quiz
-            key={currentQuiz.id} // Needed to force re-render on quiz change
+            // Use a composite key including answers version if needed, but quiz ID is usually enough
+            // if combined with lifting state. The key forces a reset of Quiz's *internal*
+            // non-persistent state (like current view index) which is good.
+            key={currentQuiz.id}
+            quizId={currentQuiz.id} // Pass quizId
             questions={currentQuiz.questions}
-            // onSelectItem={handleSelectAnswer} 
+            // Pass the specific answers array for *this* quiz
+            userAnswers={currentQuizAnswers}
+            // Pass the callback function to update answers in App's state
+            onAnswerUpdate={handleAnswerUpdate}
           />
 
           <ChatApp />
         </>
+      )}
+
+      {!loading && !error && currentQuiz === undefined && quizzes.length === 0 && (
+        <p style={{ textAlign: 'center', marginTop: '20px' }}>No quizzes available.</p>
       )}
     </>
   );

@@ -1,5 +1,6 @@
 
 Start app:
+
     Terminal 1 (Backend):
         python backend/app.py
 
