@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"; // Import React if using Fragments or JSX specific features
+import { useState, useEffect } from "react"; // Import React if using Fragments or JSX specific features
 import { Button } from "react-bootstrap";
 import { Question } from "../interfaces/interfaces"; // Adjust path if needed
 
