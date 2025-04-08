@@ -43,7 +43,8 @@ function App() {
         setCurrentQuiz(undefined);
         console.warn("No quizzes found.");
       }
-    } catch (err) {
+    } 
+    catch (err) {
       console.error("Error fetching quizzes:", err);
       let message = 'Failed to fetch quizzes.';
       if (axios.isAxiosError(err)) {
