@@ -3,116 +3,270 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from database import connect_to_db, get_db
-# bson.ObjectId might not be strictly needed if you always exclude _id,
-# but keep it for the encoder in case you use ObjectIds elsewhere.
 from bson import ObjectId
 import json
 import os
-# Remove 'import uuid' if you are NOT generating custom UUIDs for 'id'
+import uuid # Keep using UUIDs for your internal IDs
+import google.generativeai as genai # Import Google GenAI
+from dotenv import load_dotenv
+
+
+
+# --- Load Environment Variables ---
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}}) # Adjust as needed
 
-# --- Custom JSON Encoder (Keep this, good practice) ---
-# Although we exclude _id now, it handles any other potential ObjectId fields
+
+
+# --- Configure Google Gemini Client ---
+gemini_model = None
+try:
+    google_api_key = os.environ.get("GOOGLE_API_KEY")
+    if not google_api_key:
+        print("WARNING: GOOGLE_API_KEY environment variable not set. AI generation disabled.")
+    else:
+        genai.configure(api_key=google_api_key)
+        # Configure the model to directly output JSON
+        generation_config = genai.types.GenerationConfig(
+            # Crucial for getting structured JSON output
+            response_mime_type="application/json"
+        )
+        # Select the Gemini model (check Google AI documentation for latest models)
+        # gemini-1.5-flash is often a good balance of cost/performance
+        gemini_model = genai.GenerativeModel(
+            "gemini-1.5-flash",
+            generation_config=generation_config
+            # Add safety_settings here if needed (e.g., block fewer categories)
+            # safety_settings=[...]
+            )
+        print("Google Gemini client initialized ('gemini-1.5-flash' with JSON output).")
+except Exception as e:
+     print(f"Error initializing Google Gemini client: {e}")
+
+
+
+# --- Custom JSON Encoder (Keep this) ---
 class MongoJSONEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, ObjectId):
-            return str(o)
+        if isinstance(o, ObjectId): return str(o)
         return super().default(o)
 app.json_encoder = MongoJSONEncoder
+
+
 
 # --- Connect to DB ---
 try:
     connect_to_db()
-    print("Database connection established successfully for the Flask app.")
+    print("Database connection established successfully.")
 except Exception as e:
     print(f"FATAL: Could not connect to database on startup: {e}")
     import sys
     sys.exit(1)
 
-# --- API endpoint to GET all quizzes ---
+
+
+# --- Helper function to create the prompt (extracted for clarity) ---
+def create_quiz_prompt(topic: str, num_questions: int) -> str:
+    """Generates the precise prompt for the LLMs, requesting JSON output."""
+    # Using the well-defined prompt structure you refined
+    prompt = f"""
+Generate exactly {num_questions} multiple-choice quiz questions about the topic: "{topic}".
+
+Format the output STRICTLY as a single JSON object. This object must contain ONE key named "questions".
+The value of "questions" MUST be a JSON array where each element is a question object.
+
+Each question object in the array MUST have the following fields:
+- "id": A unique UUID string generated for this question.
+- "type": The string "multiple_choice".
+- "question_text": The string containing the question text.
+- "answers": A JSON array containing exactly 4 answer option objects.
+
+Each answer option object in the "answers" array MUST have the following fields:
+- "id": A unique UUID string generated for this answer option.
+- "answer_text": The string containing the answer text.
+- "is_correct": A boolean value (true for ONLY ONE answer per question, false for the others).
+
+Example of a single question object within the "questions" array:
+{{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "multiple_choice",
+  "question_text": "What is the powerhouse of the cell?",
+  "answers": [
+    {{ "id": "a1b2c3d4-...", "answer_text": "Nucleus", "is_correct": false }},
+    {{ "id": "e5f6g7h8-...", "answer_text": "Ribosome", "is_correct": false }},
+    {{ "id": "i9j0k1l2-...", "answer_text": "Mitochondrion", "is_correct": true }},
+    {{ "id": "m3n4o5p6-...", "answer_text": "Chloroplast", "is_correct": false }}
+  ]
+}}
+
+Ensure the entire output is only the valid JSON object with the "questions" key and its array value. Do not include any other text, explanations, or markdown formatting like ```json ... ```. Generate unique UUIDs for all 'id' fields.
+"""
+    return prompt.strip()
+
+
+
+# --- GET /api/quizzes (No changes needed) ---
 @app.route('/api/quizzes', methods=['GET'])
 def get_all_quizzes():
     print("GET /api/quizzes request received")
     try:
         db = get_db()
         quizzes_collection = db.quizzes
-
-        # --- Use Projection to exclude _id ---
-        # find({}, {'_id': 0}) tells MongoDB: find all documents ({}),
-        # but do NOT include the _id field (0 means exclude).
-        # All other fields will be included by default.
         all_quizzes = list(quizzes_collection.find({}, {'_id': 0}))
-
-        # The documents in 'all_quizzes' list will NOT have the '_id' key.
-        # They will contain the 'id', 'title', 'questions' etc. fields
-        # ASSUMING those fields actually exist in your database documents.
-
         return jsonify(all_quizzes)
-
     except Exception as e:
         print(f"Error fetching quizzes: {e}")
         return jsonify({"error": "Failed to fetch quizzes from database"}), 500
 
-
-# --- API endpoint to POST (add) a new quiz ---
+# --- POST /api/quizzes (Manual Add - No changes needed) ---
 @app.route('/api/quizzes', methods=['POST'])
 def add_quiz():
-    print("POST /api/quizzes request received")
+    # ... (previous code for manual adding) ...
+    print("POST /api/quizzes request received (Manual Add)")
     try:
         db = get_db()
         quizzes_collection = db.quizzes
         data = request.get_json()
-
-        # --- Basic Input Validation ---
-        if not data:
-            return jsonify({"error": "Request body must contain JSON data"}), 400
-        # *** IMPORTANT: Ensure the 'id' field is provided by the client
-        # or generate it here if your interface requires it but Mongo doesn't auto-add it ***
-        if 'id' not in data:
-            # Option A: Generate ID if missing (e.g., if using UUIDs)
-            # data['id'] = str(uuid.uuid4()) # Requires importing uuid
-            # Option B: If using numeric IDs, you need a way to generate the next one
-            # next_id = get_next_sequence_value("quiz_id") # Requires custom counter logic
-            # data['id'] = next_id
-            # Option C: Return an error if client MUST provide the ID
-             return jsonify({"error": "Missing 'id' in request body"}), 400
-
-        if 'title' not in data or not data['title']:
-             return jsonify({"error": "Missing or empty 'title' in request body"}), 400
-        if 'questions' not in data:
-            data['questions'] = [] # Default to empty list
-
-        # --- Optional: Add IDs to nested questions/answers if needed ---
-        # if 'questions' in data:
-        #    for question in data['questions']:
-        #       if 'id' not in question: question['id'] = ... # Generate/assign ID
-        #       if 'answers' in question:
-        #           for answer in question['answers']:
-        #               if 'id' not in answer: answer['id'] = ... # Generate/assign ID
-
-        # --- Insert into Database ---
-        # data now contains the 'id' field required by your interface
+        if not data: return jsonify({"error": "Request body must contain JSON data"}), 400
+        if 'title' not in data or not data['title']: return jsonify({"error": "Missing 'title'"}), 400
+        if 'id' not in data: data['id'] = str(uuid.uuid4())
+        if 'questions' not in data: data['questions'] = []
         insert_result = quizzes_collection.insert_one(data)
-        # MongoDB will still add its own _id internally, but we don't care about it
-
-        # --- Fetch and Return (excluding _id) ---
-        # Find using the 'id' field you expect (numeric or string)
         new_quiz = quizzes_collection.find_one({"id": data['id']}, {'_id': 0})
-
-        if not new_quiz:
-             # This could happen if insert failed silently or if find criteria is wrong
-             return jsonify({"error": "Failed to retrieve newly added quiz"}), 500
-
+        if not new_quiz: return jsonify({"error": "Failed to retrieve newly added quiz"}), 500
         return jsonify(new_quiz), 201
+    except Exception as e:
+        print(f"Error adding manual quiz: {e}")
+        return jsonify({"error": "Failed to add quiz manually"}), 500
+
+
+
+# --- *** MODIFIED: API endpoint to GENERATE a quiz using Google Gemini *** ---
+@app.route('/api/quizzes/generate', methods=['POST'])
+def generate_quiz():
+    print("POST /api/quizzes/generate request received (Using Gemini)")
+    if not gemini_model: # Check if Gemini client is initialized
+        return jsonify({"error": "AI service (Gemini) is not configured or API key is missing."}), 503
+
+    try:
+        data = request.get_json()
+        if not data: return jsonify({"error": "Request body must contain JSON data"}), 400
+
+        req_title = data.get('title')
+        topic = data.get('topic')
+        num_questions = data.get('num_questions', 5)
+
+        if not req_title or not topic:
+            return jsonify({"error": "Missing 'title' or 'topic' in request body"}), 400
+        if not isinstance(num_questions, int) or num_questions < 1 or num_questions > 20:
+             return jsonify({"error": "Invalid 'num_questions' (must be int between 1 and 20)"}), 400
+
+        # --- Create the prompt using the helper function ---
+        prompt = create_quiz_prompt(topic, num_questions)
+
+        print(f"Sending prompt to Gemini for topic: '{topic}' ({num_questions} questions)")
+        # --- Call Google Gemini API ---
+        try:
+            # Call the Gemini model
+            response = gemini_model.generate_content(prompt)
+
+            # --- Handle Gemini Response ---
+            if response.parts:
+                ai_response_content = response.text.strip() # .text gets the content
+                print("Received response from Gemini.")
+            else:
+                # Log detailed blocking information if available
+                print("Gemini Error: No content generated or response was blocked.")
+                error_message = "AI failed to generate content."
+                try:
+                    print(f"Prompt Feedback: {response.prompt_feedback}")
+                    if response.candidates:
+                        reason = response.candidates[0].finish_reason
+                        print(f"Finish Reason: {reason}")
+                        if reason == 'SAFETY':
+                             error_message = "AI content generation blocked due to safety settings."
+                             print(f"Safety Ratings: {response.candidates[0].safety_ratings}")
+
+                except Exception as feedback_err:
+                    print(f"Could not access detailed Gemini feedback: {feedback_err}")
+                # Raise an error that will be caught by the outer 'except' block
+                raise ValueError(error_message)
+
+        except Exception as ai_error:
+             # Catch errors during the API call itself or the ValueError raised above
+             print(f"Error interacting with Gemini API: {ai_error}")
+             user_message = f"Failed to generate quiz content from AI service: {ai_error}"
+             # Check for common API key errors (may vary based on google-generativeai library versions)
+             if "api key" in str(ai_error).lower() or "permission denied" in str(ai_error).lower():
+                 user_message = "AI service authentication failed. Check Google API key."
+
+             return jsonify({"error": user_message}), 503 # Service Unavailable or specific error
+
+        # --- Parse and Validate AI Response ---
+        # (This part remains largely the same as we expect JSON)
+        try:
+            if not ai_response_content: raise ValueError("AI returned empty content string.")
+
+            # Parse the JSON string from the AI response
+            # Gemini (with response_mime_type="application/json") should return just the JSON object string
+            generated_data = json.loads(ai_response_content)
+
+            # Validate the top-level structure
+            if not isinstance(generated_data, dict) or "questions" not in generated_data:
+                 raise ValueError("AI response is not a JSON object with a 'questions' key.")
+            generated_questions = generated_data["questions"]
+            if not isinstance(generated_questions, list):
+                 raise ValueError("The 'questions' field in AI response is not a JSON array.")
+
+            # Basic validation of generated questions count
+            if len(generated_questions) != num_questions:
+                 print(f"Warning: AI generated {len(generated_questions)} questions, requested {num_questions}.")
+
+            # ** TODO: Add the same robust validation as before **
+            # Check question structure, answers, exactly one correct, UUIDs etc.
+
+            print(f"Successfully parsed {len(generated_questions)} questions from Gemini response.")
+
+        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
+            print(f"Error parsing or validating AI (Gemini) response: {parse_error}")
+            print("--- Raw AI (Gemini) Response ---")
+            print(ai_response_content)
+            print("--- End Raw AI Response ---")
+            return jsonify({"error": "Received invalid data format from AI generator."}), 500
+
+        # --- Prepare and Save Quiz Document (No changes needed here) ---
+        db = get_db()
+        quizzes_collection = db.quizzes
+        new_quiz_doc = {
+            "id": str(uuid.uuid4()),
+            "title": req_title,
+            "topic": topic,
+            "questions": generated_questions
+        }
+        insert_result = quizzes_collection.insert_one(new_quiz_doc)
+        print(f"Inserted quiz with custom ID: {new_quiz_doc['id']}, MongoDB _id: {insert_result.inserted_id}")
+
+        # --- Fetch and Return (excluding _id) (No changes needed here) ---
+        created_quiz = quizzes_collection.find_one({"id": new_quiz_doc['id']}, {'_id': 0})
+        if not created_quiz:
+             print(f"CRITICAL: Failed to retrieve quiz {new_quiz_doc['id']} immediately after insertion.")
+             return jsonify({"error": "Failed to confirm quiz creation after saving"}), 500
+
+        print(f"Successfully generated and saved quiz '{created_quiz['title']}' using Gemini")
+        return jsonify(created_quiz), 201
 
     except Exception as e:
-        print(f"Error adding quiz: {e}")
-        return jsonify({"error": "Failed to add quiz to database"}), 500
+        # Catch-all for unexpected errors in the route logic
+        print(f"Unexpected error in /api/quizzes/generate (Gemini): {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "An unexpected server error occurred during quiz generation."}), 500
 
 
-# --- Run the App ---
+
+# --- Run the App (No changes needed) ---
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=True, host='0.0.0.0', port=port)

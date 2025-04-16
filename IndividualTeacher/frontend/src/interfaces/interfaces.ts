@@ -8,7 +8,7 @@ export interface AnswerOption {
   
 
 export interface Question {
-    id: number; // Unique identifier for the question
+    id: string; // Unique identifier for the question
     // Type to determine how the question is rendered and graded
     type: 'multiple_choice' | 'simple_question' | 'fill_in_the_blank' | string; // Use specific types or string for flexibility
     question_text: string;
@@ -19,7 +19,7 @@ export interface Question {
 
 
 export interface QuizData {
-    id: number; // Use string if using UUIDs from backend
+    id: string; // Use string if using UUIDs from backend
     title: string;
     questions: Question[];
     // Optional metadata

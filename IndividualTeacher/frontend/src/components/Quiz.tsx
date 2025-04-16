@@ -3,10 +3,10 @@ import { Button } from "react-bootstrap";
 import { Question } from "../interfaces/interfaces"; // Adjust path if needed
 
 interface Props {
-  quizId: number;
+  quizId: string;
   questions: Question[];
   userAnswers: number[]; // Received from App state
-  onAnswerUpdate: (quizId: number, questionIndex: number, answerIndex: number) => void;
+  onAnswerUpdate: (quizId: string, questionIndex: number, answerIndex: number) => void;
   // Optional: Add callback if you want an explicit "Exit Review" action
   // onExitReview?: (quizId: number) => void;
 }
@@ -104,14 +104,6 @@ function Quiz({ quizId, questions, userAnswers, onAnswerUpdate /*, onExitReview 
   return (
     <div className="position-absolute top-50 start-50 translate-middle" style={{ width: '80%', maxWidth: '600px' }}>
 
-      {/* *** REVIEW MODE HEADER (Score) *** */}
-      {quizFinished && (
-        <div className="text-center mb-3 alert alert-primary">
-          <h4>Reviewing Answers</h4>
-          <p className="lead mb-0">Final Score: {score} out of {questions.length}</p>
-        </div>
-      )}
-
       {/* Display the Question */}
       <h4>{currentQuestion.question_text}</h4>
 
@@ -138,6 +130,7 @@ function Quiz({ quizId, questions, userAnswers, onAnswerUpdate /*, onExitReview 
           ))}
         </ul>
       </div>
+
 
       {/* Navigation Buttons */}
       <div className="d-flex justify-content-between mt-3">
@@ -176,6 +169,15 @@ function Quiz({ quizId, questions, userAnswers, onAnswerUpdate /*, onExitReview 
       <div style={{ textAlign: "right", marginTop: "10px" }}>
         <p> Question {currentQuestionIndex + 1} of {questions.length} </p>
       </div>
+
+
+      {/* *** REVIEW MODE HEADER (Score) *** */}
+      {quizFinished && (
+        <div className="text-center mb-3 alert alert-primary">
+          <h4>Reviewing Answers</h4>
+          <p className="lead mb-0">Final Score: {score} out of {questions.length}</p>
+        </div>
+      )}
     </div>
   );
 }

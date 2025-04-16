@@ -1,95 +1,100 @@
+// frontend/src/QuizManager.tsx
 import { useState } from "react";
 import { Button, Offcanvas } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
+import { useNavigate, useLocation } from "react-router-dom"; // Import useNavigate and useLocation
+import { QuizData } from "../interfaces/interfaces"; // Adjust path if needed
 
 interface Props {
-  quizTitleList: string[];
-  idList: number[];
-  onSelectTitleItem: (id: number) => void;
+  quizList: QuizData[]; // Expect the full QuizData objects
+  selectedQuizId: string | null; // Expect string ID
+  onSelectTitleItem: (id: string) => void; // Expect string ID
 }
 
-const QuizManager = ({ quizTitleList, idList, onSelectTitleItem }: Props) => {
+const QuizManager = ({ quizList, selectedQuizId, onSelectTitleItem }: Props) => {
   const [show, setShow] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const navigate = useNavigate();
+  const location = useLocation(); // Get current location
+
+  const handleClose = () => setShow(false);
+  const handleShow = () => setShow(true);
+
+  const handleCreateClick = () => {
+    navigate('/create'); // Navigate to the creator route
+    // handleClose(); // Close the offcanvas
+  };
+
+  const handleQuizSelect = (id: string) => {
+    onSelectTitleItem(id);
+    if (location.pathname !== '/') {
+        navigate('/'); // Navigate back to main quiz view if not already there
+    }
+    // handleClose(); // Close the offcanvas
+  };
 
   return (
     <>
-      {/* Button to Open Offcanvas */}
       <Button
+        variant="primary"
         style={{
-          backgroundColor: "#007bff",
-          color: "white",
           position: "fixed",
-          top: "3rem",
-          left: "3rem",
-          // width: "90px",
-          // height: "90px",
+          top: "1rem", // Adjusted position slightly
+          left: "1rem",
+           // Ensure it's above potential offcanvas backdrop
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "1.5rem",
+          padding: '0.5rem 1rem',
         }}
-        variant="primary"
-        onClick={() => setShow(true)}
+        onClick={handleShow}
+        aria-controls="offcanvasQuizManager"
       >
-        Select Quiz
+        Quizzes Menu
       </Button>
 
-      {/* Offcanvas Sidebar */}
       <Offcanvas
-        backdrop={false}
+        id="offcanvasQuizManager"
         show={show}
-        onHide={() => setShow(false)}
+        onHide={handleClose}
         placement="start"
+        backdrop={false} // Keep backdrop
       >
         <Offcanvas.Header closeButton>
-          <Offcanvas.Title>Saved Quizzes</Offcanvas.Title>
+          <Offcanvas.Title>Quizzes</Offcanvas.Title>
         </Offcanvas.Header>
         <Offcanvas.Body>
 
-          
           <Button
-            className="New Quiz"
-            style={{
-              backgroundColor: "#007bff",
-              color: "white",
-              position: "relative",
-              margin: "0 20% 5% 20%",
-              // right: "3%em",
-              // width: "90px",
-              // height: "90px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "1.5rem",
-            }}
-            // onClick={}
+            // variant="success"
+            className="w-100 mb-3" // Full width, margin bottom
+            style={{ fontSize: "1.2rem" }}
+            onClick={handleCreateClick}
           >
-            Create New Quiz
+            Create New Quiz (AI)
           </Button>
 
-          <ul className="list-group">
-            {quizTitleList.map((quizTitleList, index) => (
-              <li
-                className={
-                  selectedIndex === index
-                    ? "list-group-item active"
-                    : "list-group-item"
-                }
-                key={quizTitleList}
-                onClick={() => {
-                  setSelectedIndex(index);
-                  onSelectTitleItem(idList[index]);
-                }}
-              >
-                {quizTitleList}
-              </li>
-            ))}
-          </ul>
+          {quizList.length === 0 ? (
+             <p className="text-center text-muted">No quizzes found.</p>
+          ) : (
+            <ul className="list-group">
+              {quizList.map((quiz) => (
+                <li
+                  className={`list-group-item list-group-item-action ${ // Action class for hover effect
+                    selectedQuizId === quiz.id ? "active" : ""
+                  }`}
+                  key={quiz.id} // Use unique string ID for key
+                  onClick={() => handleQuizSelect(quiz.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {quiz.title}
+                </li>
+              ))}
+            </ul>
+          )}
         </Offcanvas.Body>
       </Offcanvas>
     </>
   );
 };
-export default QuizManager;
 
+export default QuizManager;
