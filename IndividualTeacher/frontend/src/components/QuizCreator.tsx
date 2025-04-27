@@ -8,7 +8,8 @@ import { QuizData } from '../interfaces/interfaces'; // Adjust path if needed
 const API_BASE_URL = 'http://localhost:5001'; // Ensure this matches backend
 
 interface Props {
-  onQuizCreated: () => void; // Callback to notify App.tsx to refresh list
+  // Expects the new quiz data, or null if creation failed unexpectedly before getting data
+  onQuizCreated: (newQuiz: QuizData | null) => void;
 }
 
 const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
@@ -25,6 +26,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
         setError(null);
         setSuccessMessage(null); // Clear previous success message
 
+        // Basic validation
         if (!title.trim()) { setError("Please provide a title."); return; }
         if (!topic.trim()) { setError("Please provide a topic."); return; }
         if (numQuestions < 1 || numQuestions > 20) { setError("Number of questions must be between 1 and 20."); return; }
@@ -35,44 +37,46 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
             console.log(`Sending request to generate quiz: Title='${title}', Topic='${topic}', NumQuestions=${numQuestions}`);
 
             // Make POST request to the backend endpoint
-            // The backend now returns the full created quiz object
             const response = await axios.post<QuizData>(`${API_BASE_URL}/api/quizzes/generate`, {
                 title: title.trim(),
                 topic: topic.trim(),
-                num_questions: numQuestions, // Match backend expected key
+                num_questions: numQuestions,
             });
 
-            console.log("Quiz generated successfully by backend:", response.data);
-            setSuccessMessage(`Quiz "${response.data.title}" created successfully! Redirecting...`);
-            onQuizCreated(); // Notify App.tsx to refresh the quiz list & potentially select new one
+            const newQuizData = response.data; // The backend returns the created quiz
+            console.log("Quiz generated successfully by backend:", newQuizData);
 
-            // Clear form
-            setTitle('');
-            setTopic('');
-            setNumQuestions(5);
+            setSuccessMessage(`Quiz "${newQuizData.title}" created successfully! Redirecting...`);
+            onQuizCreated(newQuizData); // Notify App.tsx and pass the data
 
-            // Navigate back to the main page after a short delay
-            setTimeout(() => navigate('/'), 2000); // Navigate after 2 seconds
+            // Clear form (optional, happens before redirect anyway)
+            // setTitle('');
+            // setTopic('');
+            // setNumQuestions(5);
+
+            // Navigate back to the main page after a short delay to show success message
+            // setTimeout(() => navigate('/'), 2000); // Navigate after 2 seconds
+            navigate('/'); // Navigate after 2 seconds
 
         } catch (err) {
             console.error("Error creating quiz:", err);
             let message = 'Failed to create quiz via AI.';
             if (axios.isAxiosError(err)) {
-                // Prefer backend error message if available
                 message = err.response?.data?.error || `Network error or backend unavailable (${err.message})`;
             } else if (err instanceof Error) {
                 message = err.message;
             }
             setError(message);
+             onQuizCreated(null); // Notify App creation failed (or didn't return data)
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <Container className="mt-4"> {/* Reduced top margin slightly */}
+        <Container className="mt-4">
             <Row className="justify-content-md-center">
-                <Col md={8} lg={7}> {/* Adjusted column size slightly */}
+                <Col md={8} lg={7}>
                     <h2 className="mb-3 text-center">Create Quiz with AI</h2>
                     <p className="text-center text-muted mb-4">
                         Enter a title and topic. The AI will generate multiple-choice questions based on the topic.
@@ -99,6 +103,8 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                             <Form.Label>Topic for AI</Form.Label>
                             <Form.Control
                                 type="text"
+                                as="textarea"
+                                rows={3}
                                 placeholder="e.g., Planets, orbits, Kepler's laws"
                                 value={topic}
                                 onChange={(e) => setTopic(e.target.value)}
@@ -109,6 +115,8 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                                 Be reasonably specific for better results.
                             </Form.Text>
                         </Form.Group>
+
+
 
                         <Form.Group className="mb-3" controlId="numQuestions">
                             <Form.Label>Number of Questions</Form.Label>
@@ -140,6 +148,6 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
             </Row>
         </Container>
     );
-}
+};
 
 export default QuizCreator;

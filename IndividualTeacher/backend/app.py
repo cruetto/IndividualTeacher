@@ -239,12 +239,40 @@ def generate_quiz():
         # --- Prepare and Save Quiz Document (No changes needed here) ---
         db = get_db()
         quizzes_collection = db.quizzes
+
+        # Inside generate_quiz function, after parsing 'generated_questions'
+
+        validated_questions = []
+        for q_data in generated_questions:
+            question_id = str(uuid.uuid4()) # Generate question ID
+            validated_answers = []
+            if "answers" in q_data and isinstance(q_data["answers"], list):
+                 for a_data in q_data["answers"]:
+                     validated_answers.append({
+                         "id": str(uuid.uuid4()), # Generate answer ID
+                         "answer_text": a_data.get("answer_text", "N/A"),
+                         "is_correct": a_data.get("is_correct", False)
+                     })
+            validated_questions.append({
+                "id": question_id, # Use generated ID
+                "question_text": q_data.get("question_text", "N/A"),
+                "type": q_data.get("type", "multiple_choice"),
+                "answers": validated_answers
+            })
+
+        print(f"Added UUIDs to {len(validated_questions)} questions.")
+        generated_questions = validated_questions # Replace with processed list
+
+        # --- Prepare and Save Quiz Document ---
+        # ... (rest of the function uses the generated_questions list with IDs) ...
         new_quiz_doc = {
             "id": str(uuid.uuid4()),
             "title": req_title,
             "topic": topic,
-            "questions": generated_questions
+            "questions": generated_questions # <-- Use questions with IDs
         }
+        # ... (rest of save logic) ...
+
         insert_result = quizzes_collection.insert_one(new_quiz_doc)
         print(f"Inserted quiz with custom ID: {new_quiz_doc['id']}, MongoDB _id: {insert_result.inserted_id}")
 
@@ -263,6 +291,97 @@ def generate_quiz():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "An unexpected server error occurred during quiz generation."}), 500
+
+
+
+
+
+
+# backend/app.py
+# ... (previous imports, setup, GET, POST, GENERATE routes) ...
+
+# --- *** NEW: API endpoint to DELETE a quiz *** ---
+@app.route('/api/quizzes/<quiz_id>', methods=['DELETE'])
+def delete_quiz(quiz_id):
+    print(f"DELETE /api/quizzes/{quiz_id} request received")
+    try:
+        db = get_db()
+        quizzes_collection = db.quizzes
+
+        # Find using the custom 'id' field (which should be a string UUID)
+        delete_result = quizzes_collection.delete_one({"id": quiz_id})
+
+        if delete_result.deleted_count == 1:
+            print(f"Successfully deleted quiz with ID: {quiz_id}")
+            # 204 No Content is often used for successful DELETE with no body
+            return '', 204
+        else:
+            print(f"Quiz with ID {quiz_id} not found for deletion.")
+            return jsonify({"error": "Quiz not found"}), 404
+
+    except Exception as e:
+        print(f"Error deleting quiz {quiz_id}: {e}")
+        return jsonify({"error": "Failed to delete quiz"}), 500
+
+
+# --- *** NEW: API endpoint to UPDATE (PUT) a quiz *** ---
+@app.route('/api/quizzes/<quiz_id>', methods=['PUT'])
+def update_quiz(quiz_id):
+    print(f"PUT /api/quizzes/{quiz_id} request received")
+    try:
+        db = get_db()
+        quizzes_collection = db.quizzes
+        updated_data = request.get_json()
+
+        if not updated_data:
+            return jsonify({"error": "Request body must contain JSON data"}), 400
+
+        # --- Validation (Crucial!) ---
+        # Ensure required fields are present (title, questions as list, etc.)
+        if 'id' not in updated_data or updated_data['id'] != quiz_id:
+             return jsonify({"error": "Quiz ID in body does not match URL ID"}), 400
+        if 'title' not in updated_data or not updated_data['title']:
+             return jsonify({"error": "Missing or empty 'title'"}), 400
+        if 'questions' not in updated_data or not isinstance(updated_data['questions'], list):
+            return jsonify({"error": "Missing or invalid 'questions' array"}), 400
+        # ** TODO: Add deeper validation for questions and answers structure **
+        # - Check IDs, question_text, answers array, answer_text, is_correct boolean etc.
+
+
+        # --- Perform Update ---
+        # replace_one finds the document by custom 'id' and replaces its entire content
+        # (excluding the immutable MongoDB _id) with the provided data.
+        update_result = quizzes_collection.replace_one(
+            {"id": quiz_id}, # Filter to find the document by custom ID
+            updated_data     # The new content for the document
+            # upsert=False by default (don't create if not found)
+        )
+
+        if update_result.matched_count == 1:
+            if update_result.modified_count == 1:
+                print(f"Successfully updated quiz with ID: {quiz_id}")
+                 # Fetch the updated document (excluding _id) to return it
+                updated_quiz = quizzes_collection.find_one({"id": quiz_id}, {'_id': 0})
+                return jsonify(updated_quiz), 200 # OK
+            else:
+                 print(f"Quiz {quiz_id} found but no changes were needed.")
+                 # Still return the document, maybe with 200 OK or 304 Not Modified? 200 is simpler.
+                 updated_quiz = quizzes_collection.find_one({"id": quiz_id}, {'_id': 0})
+                 return jsonify(updated_quiz), 200
+        else:
+            print(f"Quiz with ID {quiz_id} not found for update.")
+            return jsonify({"error": "Quiz not found"}), 404
+
+    except Exception as e:
+        print(f"Error updating quiz {quiz_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Failed to update quiz"}), 500
+
+
+# --- Run the App ---
+# ... (if __name__ == '__main__' block) ...
+
 
 
 

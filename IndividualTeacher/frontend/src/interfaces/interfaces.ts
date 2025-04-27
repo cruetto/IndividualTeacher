@@ -2,7 +2,7 @@
 export interface AnswerOption {
     answer_text: string;
     is_correct: boolean;
-
+    id: string; // Unique identifier for the answer option
 }
 
   
