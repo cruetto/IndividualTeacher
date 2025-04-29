@@ -297,10 +297,6 @@ def generate_quiz():
 
 
 
-# backend/app.py
-# ... (previous imports, setup, GET, POST, GENERATE routes) ...
-
-# --- *** NEW: API endpoint to DELETE a quiz *** ---
 @app.route('/api/quizzes/<quiz_id>', methods=['DELETE'])
 def delete_quiz(quiz_id):
     print(f"DELETE /api/quizzes/{quiz_id} request received")
@@ -377,10 +373,6 @@ def update_quiz(quiz_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to update quiz"}), 500
-
-
-# --- Run the App ---
-# ... (if __name__ == '__main__' block) ...
 
 
 

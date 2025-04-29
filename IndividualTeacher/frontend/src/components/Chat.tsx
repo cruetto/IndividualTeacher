@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+// frontend/src/components/Chat.tsx
+
+import { useState } from "react";
 import { Button, Offcanvas, Form, InputGroup } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 
