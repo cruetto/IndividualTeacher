@@ -1,9 +1,10 @@
 // frontend/src/components/Quiz.tsx
-import { useState, useEffect, useMemo, useCallback } from "react"; // Added useCallback
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "react-bootstrap";
+// Make sure AnswerOption is imported if used within this file scope
 import { Question, AnswerOption } from "../interfaces/interfaces";
 
-// --- Fisher-Yates Shuffle Function (remains the same) ---
+// --- Shuffle Function ---
 function shuffleArray<T>(array: T[]): T[] {
   if (!array) return [];
   const shuffled = [...array];
@@ -14,22 +15,29 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-interface DisplayQuestion extends Question {
-    originalIndex: number;
-}
-
-interface DisplayAnswer extends AnswerOption {
-    originalIndex: number;
-}
+// Add originalIndex to track mapping after shuffle
+interface DisplayQuestion extends Question { originalIndex: number; }
+// Add originalIndex here too
+interface DisplayAnswer extends AnswerOption { originalIndex: number; }
 
 interface Props {
   quizId: string;
   questions: Question[]; // Original, unshuffled questions
   userAnswers: number[];
-  onAnswerUpdate: (quizId: string, questionIndex: number, answerIndex: number) => void;
+  onAnswerUpdate: (quizId: string, originalQuestionIndex: number, originalAnswerIndex: number) => void; // Use original indices
   shuffleQuestions: boolean;
   shuffleAnswers: boolean;
-  onResetQuiz: (quizId: string) => void; // Callback to reset answers in App state
+  onResetQuiz: (quizId: string) => void; // Callback to reset answers AND state in App
+
+  // --- State and Setters Lifted from App ---
+  isReviewMode: boolean;
+  currentDisplayIndex: number; // Index in the potentially shuffled displayQuestions array
+  score: number;
+  setQuizFinished: (finished: boolean) => void;
+  setCurrentDisplayIndex: (index: number) => void;
+  setScore: (score: number) => void;
+  // --- Callback to inform App about the currently displayed question ---
+  onDisplayedQuestionChange: (question: DisplayQuestion | null) => void;
 }
 
 function Quiz({
@@ -39,120 +47,113 @@ function Quiz({
     onAnswerUpdate,
     shuffleQuestions,
     shuffleAnswers,
-    onResetQuiz
+    onResetQuiz,
+    // Destructure lifted state and setters
+    isReviewMode,
+    currentDisplayIndex,
+    score,
+    setQuizFinished,
+    setCurrentDisplayIndex,
+    setScore,
+    onDisplayedQuestionChange // New callback prop
 }: Props) {
 
+  // Local state ONLY for shuffled display arrays & visual selection within display
   const [displayQuestions, setDisplayQuestions] = useState<DisplayQuestion[]>([]);
   const [displayAnswers, setDisplayAnswers] = useState<DisplayAnswer[]>([]);
-  const [currentDisplayIndex, setCurrentDisplayIndex] = useState<number>(0);
   const [selectedDisplayAnswerIndex, setSelectedDisplayAnswerIndex] = useState<number>(-1);
-  const [quizFinished, setQuizFinished] = useState<boolean>(false);
-  const [score, setScore] = useState<number>(0);
 
-  // --- NEW: Dedicated function to handle question shuffling and state reset ---
-  const shuffleAndResetQuestions = useCallback(() => {
-    console.log("Executing shuffleAndResetQuestions. Shuffle enabled:", shuffleQuestions);
+  // --- Setup/Reset Display Questions Function ---
+  const setupDisplayQuestions = useCallback(() => {
     const baseQuestions = questions.map((q, index) => ({ ...q, originalIndex: index }));
-    const questionsToDisplay = shuffleQuestions ? shuffleArray(baseQuestions) : baseQuestions;
-    setDisplayQuestions(questionsToDisplay);
-    setCurrentDisplayIndex(0); // Always start from the first question after reset/shuffle
-    setQuizFinished(false);    // Ensure quiz is in active mode
-    setScore(0);             // Reset score
-    // Note: Resetting selectedDisplayAnswerIndex will be handled by Effect 3 based on cleared userAnswers
-  }, [questions, shuffleQuestions]); // Dependencies for this function
+    setDisplayQuestions(shuffleQuestions ? shuffleArray(baseQuestions) : baseQuestions);
+  }, [questions, shuffleQuestions]);
 
-  // --- Effect 1: Initial setup and reshuffle ONLY when props change ---
+  // Effect 1: Setup display questions when base questions/shuffle prop change
   useEffect(() => {
-    console.log("Effect 1: questions or shuffleQuestions prop changed.");
-    shuffleAndResetQuestions(); // Call the dedicated function
-  }, [shuffleAndResetQuestions]); // Depend only on the stable callback function
+    console.log("Quiz Effect 1: Setting up display questions.");
+    setupDisplayQuestions();
+  }, [setupDisplayQuestions]);
 
-
-  // --- Effect 2: Set/Shuffle Display Answers *Only* When Question Changes or Answer Shuffle Changes ---
-  useEffect(() => {
-    if (displayQuestions.length > 0 && currentDisplayIndex < displayQuestions.length) {
-        const currentQ = displayQuestions[currentDisplayIndex];
-        console.log(`Effect 2: Setting/Shuffling answers for display index ${currentDisplayIndex} (Original: ${currentQ.originalIndex}). Shuffle enabled: ${shuffleAnswers}`);
-        const baseAnswers = currentQ.answers.map((a, index) => ({ ...a, originalIndex: index }));
-        const answersToDisplay = shuffleAnswers ? shuffleArray(baseAnswers) : baseAnswers;
-        setDisplayAnswers(answersToDisplay);
-    } else {
-        setDisplayAnswers([]);
-    }
-  }, [currentDisplayIndex, displayQuestions, shuffleAnswers]); // Re-runs only when these change
-
-
-  // --- Effect 3: Sync Visual Selection with Persisted State (userAnswers) ---
-  useEffect(() => {
-    if (displayQuestions.length > 0 && currentDisplayIndex < displayQuestions.length && displayAnswers.length > 0) {
-        const currentQ = displayQuestions[currentDisplayIndex];
-        const originalQuestionIndex = currentQ.originalIndex;
-        const persistedAnswerOriginalIndex = userAnswers[originalQuestionIndex];
-
-        let newSelectedDisplayIndex = -1;
-        if (persistedAnswerOriginalIndex !== -1 && persistedAnswerOriginalIndex !== undefined) {
-            newSelectedDisplayIndex = displayAnswers.findIndex(a => a.originalIndex === persistedAnswerOriginalIndex);
-        }
-        // Only log if the index actually changes to avoid noise
-        if (newSelectedDisplayIndex !== selectedDisplayAnswerIndex) {
-             console.log(`Effect 3: Syncing selection for display index ${currentDisplayIndex}. Persisted original answer index: ${persistedAnswerOriginalIndex}. New display index: ${newSelectedDisplayIndex}`);
-             setSelectedDisplayAnswerIndex(newSelectedDisplayIndex);
-        }
-    } else if (selectedDisplayAnswerIndex !== -1) {
-        // Ensure selection is cleared if no questions/answers
-         setSelectedDisplayAnswerIndex(-1);
-    }
-  // Ensure all relevant dependencies are included
-  }, [currentDisplayIndex, displayQuestions, displayAnswers, userAnswers, selectedDisplayAnswerIndex]);
-
-
-  // --- Current Displayed Question (Memoized - no change) ---
-  const currentDisplayQuestion = useMemo(() => { /* ... */
-    return (displayQuestions.length > 0 && currentDisplayIndex < displayQuestions.length)
+  // --- Current Displayed Question Calculation (Memoized) ---
+  // Calculate this based on the displayQuestions state and the index prop from App
+  const currentDisplayQuestion = useMemo<DisplayQuestion | null>(() => {
+    return (displayQuestions.length > 0 && currentDisplayIndex >= 0 && currentDisplayIndex < displayQuestions.length)
         ? displayQuestions[currentDisplayIndex]
         : null;
   }, [displayQuestions, currentDisplayIndex]);
 
+  // Effect 2: Set/Shuffle Display Answers & Report Current Question *after* currentDisplayQuestion is calculated
+  useEffect(() => {
+    let answersToDisplay: DisplayAnswer[] = [];
+    if (currentDisplayQuestion) {
+        const baseAnswers = currentDisplayQuestion.answers.map((a, index) => ({ ...a, originalIndex: index }));
+        answersToDisplay = shuffleAnswers ? shuffleArray(baseAnswers) : baseAnswers;
+    }
+    setDisplayAnswers(answersToDisplay);
+    // Report the calculated current question (or null) back to App
+    console.log(`Quiz Effect 2: Reporting displayed question index ${currentDisplayIndex}`, currentDisplayQuestion?.question_text);
+    onDisplayedQuestionChange(currentDisplayQuestion);
 
-  // --- Event Handlers (handleAnswerSelect, handleNext, handlePrevious, handleFinish - no changes) ---
-  const handleAnswerSelect = (selectedDisplayIndex: number) => { /* ... */
-    if (quizFinished || !currentDisplayQuestion) return;
-    setSelectedDisplayAnswerIndex(selectedDisplayIndex);
+  // Depend on the calculated question object and shuffle flag
+  }, [currentDisplayQuestion, shuffleAnswers, onDisplayedQuestionChange, currentDisplayIndex]); // Added currentDisplayIndex back just in case
+
+  // Effect 3: Sync Visual Selection with Persisted State (userAnswers)
+  useEffect(() => {
+    let newSelectedDisplayIndex = -1;
+    // Check if we have a valid displayed question and answers rendered
+    if (currentDisplayQuestion && displayAnswers.length > 0) {
+        const originalQuestionIndex = currentDisplayQuestion.originalIndex;
+        const persistedAnswerOriginalIndex = userAnswers[originalQuestionIndex]; // Get the saved answer's ORIGINAL index
+
+        if (persistedAnswerOriginalIndex !== -1 && persistedAnswerOriginalIndex !== undefined) {
+            // Find where the saved answer *currently appears* in the (potentially shuffled) displayAnswers
+            newSelectedDisplayIndex = displayAnswers.findIndex(a => a.originalIndex === persistedAnswerOriginalIndex);
+        }
+    }
+     // Only update state if the calculated index is different from the current one
+    if (newSelectedDisplayIndex !== selectedDisplayAnswerIndex) {
+        console.log(`Quiz Effect 3: Syncing visual selection to display index: ${newSelectedDisplayIndex}`);
+        setSelectedDisplayAnswerIndex(newSelectedDisplayIndex);
+    }
+  // Depend on the key pieces of data needed for the calculation
+  }, [currentDisplayQuestion, displayAnswers, userAnswers, selectedDisplayAnswerIndex]);
+
+
+  // --- Event Handlers ---
+  const handleAnswerSelect = (selectedDisplayIndex: number) => {
+    if (isReviewMode || !currentDisplayQuestion) return; // Use prop isReviewMode
+    setSelectedDisplayAnswerIndex(selectedDisplayIndex); // Update local visual state
     const selectedDisplayedAnswer = displayAnswers[selectedDisplayIndex];
-    const originalQuestionIndex = currentDisplayQuestion.originalIndex;
-    const originalAnswerIndex = selectedDisplayedAnswer.originalIndex;
-    onAnswerUpdate(quizId, originalQuestionIndex, originalAnswerIndex);
+    // Pass ORIGINAL indices back up to App
+    onAnswerUpdate(quizId, currentDisplayQuestion.originalIndex, selectedDisplayedAnswer.originalIndex);
   };
-  const handleNext = () => { if (currentDisplayIndex < displayQuestions.length - 1) setCurrentDisplayIndex(prev => prev + 1); };
-  const handlePrevious = () => { if (currentDisplayIndex > 0) setCurrentDisplayIndex(prev => prev - 1); };
-  const handleFinish = () => { /* ... (scoring logic based on original indices) ... */
+
+  // Use setCurrentDisplayIndex prop from App to navigate
+  const handleNext = () => { if (currentDisplayIndex < displayQuestions.length - 1) setCurrentDisplayIndex(currentDisplayIndex + 1); };
+  const handlePrevious = () => { if (currentDisplayIndex > 0) setCurrentDisplayIndex(currentDisplayIndex - 1); };
+
+  const handleFinish = () => {
     let calculatedScore = 0;
-    questions.forEach((question, originalIndex) => {
-      const correctAnswerOriginalIndex = question.answers.findIndex(answer => answer.is_correct);
+    questions.forEach((question, originalIndex) => { // Score based on original order
+      const correctAnswerOriginalIndex = question.answers.findIndex(a => a.is_correct);
       const userAnswerOriginalIndex = userAnswers[originalIndex];
       if (correctAnswerOriginalIndex !== -1 && userAnswerOriginalIndex !== -1 && userAnswerOriginalIndex === correctAnswerOriginalIndex) {
         calculatedScore++;
       }
     });
-    setScore(calculatedScore);
-    setQuizFinished(true);
-    setCurrentDisplayIndex(0);
+    setScore(calculatedScore); // Update score in App state
+    setQuizFinished(true);    // Update finished state in App state
+    setCurrentDisplayIndex(0); // Reset index in App state
   };
 
-  // --- Modified: Handle End Review ---
   const handleEndReviewClick = () => {
-    console.log("End Review clicked - Resetting parent state and reshuffling questions locally.");
-    // 1. Reset persisted answers in App state
-    onResetQuiz(quizId);
-    // 2. Reshuffle questions (if enabled) and reset local state (finished, score, index)
-    shuffleAndResetQuestions();
-    // Effect 3 will automatically run afterwards due to userAnswers changing (from onResetQuiz)
-    // and reset the selectedDisplayAnswerIndex based on the now-empty answers.
+    onResetQuiz(quizId); // Call App's handler (resets answers & quiz state in App)
+    // Internal shuffle logic depends on setupDisplayQuestions being called again due to prop changes or key change
   };
 
-
-  // --- Helper for Review Styling (no changes) ---
-  const getReviewClass = (displayedAnswer: DisplayAnswer): string => { /* ... */
+  // --- Review Styling Helper ---
+  const getReviewClass = (displayedAnswer: DisplayAnswer): string => {
      if (!currentDisplayQuestion) return "";
      const originalQuestionIndex = currentDisplayQuestion.originalIndex;
      const correctAnswerOriginalIndex = questions[originalQuestionIndex]?.answers.findIndex(a => a.is_correct);
@@ -166,13 +167,14 @@ function Quiz({
   };
 
 
-  // --- Render Logic (no changes) ---
+  // --- Render Logic ---
   if (!currentDisplayQuestion) {
-      return <div className="text-center p-3">Loading question...</div>;
+      return <div className="text-center p-3">Loading question or quiz empty...</div>;
   }
+
   return (
     <div className="position-absolute top-50 start-50 translate-middle" style={{ width: '80%', maxWidth: '600px' }}>
-        {quizFinished && ( /* Review Header */
+        {isReviewMode && ( /* Review Header */
             <div className="text-center mb-3 alert alert-info">
                 <h4>Reviewing Answers</h4>
                 <p className="lead mb-0">Final Score: {score} out of {questions.length}</p>
@@ -183,26 +185,26 @@ function Quiz({
             <ul className="list-group">
             {displayAnswers.map((answer, displayIndex) => (
                 <li
-                    className={`list-group-item ${ quizFinished ? getReviewClass(answer) : selectedDisplayAnswerIndex === displayIndex ? "active" : "" }`}
-                    key={answer.id || `${currentDisplayQuestion.id}-${answer.originalIndex}`} // Use originalIndex for more stability during answer shuffle
+                    className={`list-group-item ${ isReviewMode ? getReviewClass(answer) : selectedDisplayAnswerIndex === displayIndex ? "active" : "" }`}
+                    key={answer.id || `${currentDisplayQuestion.originalIndex}-${answer.originalIndex}`} // Stable key
                     onClick={() => handleAnswerSelect(displayIndex)}
-                    style={{ cursor: quizFinished ? 'default' : 'pointer' }}
+                    style={{ cursor: isReviewMode ? 'default' : 'pointer' }}
                 >
                 {answer.answer_text}
-                {quizFinished && getReviewClass(answer) === 'list-group-item-success' && ' ✔️'}
-                {quizFinished && getReviewClass(answer) === 'list-group-item-danger' && ' ❌'}
+                {isReviewMode && getReviewClass(answer) === 'list-group-item-success' && ' ✔️'}
+                {isReviewMode && getReviewClass(answer) === 'list-group-item-danger' && ' ❌'}
                 </li>
             ))}
             </ul>
         </div>
         <div className="d-flex justify-content-between mt-3"> {/* Navigation */}
             <Button variant="secondary" onClick={handlePrevious} disabled={currentDisplayIndex === 0}> Previous </Button>
-            {!quizFinished ? ( currentDisplayIndex === displayQuestions.length - 1 ? (
+            {!isReviewMode ? ( currentDisplayIndex === displayQuestions.length - 1 ? (
                 <Button variant="success" onClick={handleFinish}> Finish Quiz </Button>
             ) : ( <Button variant="primary" onClick={handleNext}> Next </Button> )
             ) : ( currentDisplayIndex < displayQuestions.length - 1 ? (
                 <Button variant="primary" onClick={handleNext}> Next (Review) </Button>
-            ) : ( <Button variant="info" onClick={handleEndReviewClick}> End Review </Button> ) // Still uses handleEndReviewClick
+            ) : ( <Button variant="info" onClick={handleEndReviewClick}> End Review </Button> )
             )}
         </div>
         <div style={{ textAlign: "right", marginTop: "10px" }}> {/* Counter */}

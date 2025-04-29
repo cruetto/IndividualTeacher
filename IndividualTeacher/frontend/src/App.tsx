@@ -1,16 +1,24 @@
 // frontend/src/App.tsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react'; // Added useMemo
 import axios from 'axios';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+// Import Bootstrap components explicitly used
 import { Modal, Button as BootstrapButton, Spinner as BootstrapSpinner, Alert as BootstrapAlert } from 'react-bootstrap';
 
 // Components & Interfaces
-import ChatApp from './components/Chat';
+import ChatApp from './components/ChatApp.tsx';
 import Quiz from './components/Quiz';
 import QuizManager from './components/QuizManager';
 import QuizCreator from './components/QuizCreator';
 import QuizEditor from './components/QuizEditor';
-import { QuizData, Question } from './interfaces/interfaces.ts';
+// Import all necessary interfaces
+import { QuizData, Question, AnswerOption } from './interfaces/interfaces.ts';
+
+// Define DisplayQuestion type here or import if defined elsewhere shared with Quiz
+// This mirrors the internal type used in Quiz.tsx for context passing
+interface DisplayQuestion extends Question {
+    originalIndex: number;
+}
 
 const API_BASE_URL = 'http://localhost:5001';
 type AllUserAnswers = Record<string, number[]>;
@@ -22,10 +30,15 @@ function App() {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [allUserAnswers, setAllUserAnswers] = useState<AllUserAnswers>({});
+    const [shuffleQuestions, setShuffleQuestions] = useState<boolean>(true);
+    const [shuffleAnswers, setShuffleAnswers] = useState<boolean>(true);
 
-    // --- Quiz Options State ---
-    const [shuffleQuestions, setShuffleQuestions] = useState<boolean>(true); // NEW
-    const [shuffleAnswers, setShuffleAnswers] = useState<boolean>(true);   // NEW
+    // --- State Lifted from Quiz ---
+    const [currentDisplayIndex, setCurrentDisplayIndex] = useState<number>(0);
+    const [quizFinished, setQuizFinished] = useState<boolean>(false);
+    const [currentScore, setCurrentScore] = useState<number>(0);
+    // State to hold the question object reported by Quiz component
+    const [currentlyDisplayedQuestion, setCurrentlyDisplayedQuestion] = useState<DisplayQuestion | null>(null); // Use DisplayQuestion type
 
     // --- Delete Modal State ---
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -37,186 +50,169 @@ function App() {
     const currentQuiz = quizzes.find(q => q.id === currentQuizId);
     const currentQuizAnswers = currentQuiz ? allUserAnswers[currentQuiz.id] : undefined;
 
-    // --- Data Fetching (fetchQuizzes - no changes needed here) ---
+    // --- Data Fetching ---
     const fetchQuizzes = useCallback(async (selectIdAfterFetch: string | null = null) => {
-        setLoading(true);
-        setError(null);
+        setLoading(true); setError(null);
         let nextSelectedQuizId = selectIdAfterFetch;
-
         try {
-            console.log(`Fetching quizzes from: ${API_BASE_URL}/api/quizzes`);
             const response = await axios.get<QuizData[]>(`${API_BASE_URL}/api/quizzes`);
             const fetchedQuizzes = response.data || [];
             setQuizzes(fetchedQuizzes);
 
-            // Determine which quiz ID to select (logic refined)
-            if (!nextSelectedQuizId) { // If no specific ID requested
-                if (currentQuizId && fetchedQuizzes.some(q => q.id === currentQuizId)) {
-                    nextSelectedQuizId = currentQuizId; // Keep current if valid
-                } else if (fetchedQuizzes.length > 0) {
-                    nextSelectedQuizId = fetchedQuizzes[0].id; // Default to first
-                } else {
-                    nextSelectedQuizId = null; // No quizzes
-                }
-            } else { // If specific ID was requested (e.g., after create/delete)
+            // Determine selection logic
+            if (!nextSelectedQuizId) {
+                if (currentQuizId && fetchedQuizzes.some(q => q.id === currentQuizId)) nextSelectedQuizId = currentQuizId;
+                else if (fetchedQuizzes.length > 0) nextSelectedQuizId = fetchedQuizzes[0].id;
+                else nextSelectedQuizId = null;
+            } else {
                 if (!fetchedQuizzes.some(q => q.id === nextSelectedQuizId)) {
-                    console.warn(`Requested quiz ID ${selectIdAfterFetch} not found after fetch. Selecting first.`);
                     nextSelectedQuizId = fetchedQuizzes.length > 0 ? fetchedQuizzes[0].id : null;
                 }
             }
 
-            // Initialize answers only if a quiz is going to be selected
-            if (nextSelectedQuizId) {
-                const quizToInit = fetchedQuizzes.find(q => q.id === nextSelectedQuizId);
-                if (quizToInit) {
-                    // Check if answers *need* init/reset (prevents overwriting progress unnecessarily)
-                    if (!allUserAnswers[nextSelectedQuizId] || allUserAnswers[nextSelectedQuizId].length !== quizToInit.questions.length) {
-                         initializeAnswersForQuiz(quizToInit.id, quizToInit.questions);
-                    }
-                }
+            // Reset quiz state if selection changes or was null
+            if (nextSelectedQuizId !== currentQuizId) {
+                 console.log(`App: Quiz selection changing to: ${nextSelectedQuizId}`);
+                 setCurrentDisplayIndex(0); setQuizFinished(false); setCurrentScore(0); setCurrentlyDisplayedQuestion(null);
             }
             setCurrentQuizId(nextSelectedQuizId);
 
+            // Initialize answers *after* setting ID
+            if (nextSelectedQuizId) {
+                const quizToInit = fetchedQuizzes.find(q => q.id === nextSelectedQuizId);
+                if (quizToInit) {
+                    // Only init if needed
+                    if (!allUserAnswers[nextSelectedQuizId] || allUserAnswers[nextSelectedQuizId].length !== quizToInit.questions.length) {
+                        initializeAnswersForQuiz(quizToInit.id, quizToInit.questions);
+                    }
+                    // Set initial displayed question if selection just changed
+                     if (nextSelectedQuizId !== currentQuizId && quizToInit.questions.length > 0) {
+                        // This is an estimate; Quiz component will report the actual displayed one
+                        setCurrentlyDisplayedQuestion({ ...quizToInit.questions[0], originalIndex: 0 });
+                     }
+                }
+            }
             if (fetchedQuizzes.length === 0) console.warn("No quizzes found.");
-
-        } catch (err) {
-            // ... (error handling remains the same) ...
-             console.error("Error fetching quizzes:", err);
-             let message = 'Failed to fetch quizzes.';
-             if (axios.isAxiosError(err)) { message = err.response?.data?.error || err.message || message; }
-             else if (err instanceof Error) { message = err.message; }
-             setError(message);
-             setCurrentQuizId(null);
-        } finally {
-            setLoading(false);
-        }
+        } catch (err) { /* ... error handling ... */
+             console.error("Error fetching quizzes:", err); let msg='Failed fetch.';
+             if(axios.isAxiosError(err)){msg=err.response?.data?.error||err.message;}else if(err instanceof Error){msg=err.message;} setError(msg);
+             setCurrentQuizId(null); setCurrentDisplayIndex(0); setQuizFinished(false); setCurrentScore(0); setCurrentlyDisplayedQuestion(null);
+        } finally { setLoading(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentQuizId]); // Keep currentQuizId dependency
+    }, [currentQuizId]); // Recalculate selection logic if ID changes externally? Might need refinement.
 
-    // Initialize/Reset Answers for a specific quiz
     const initializeAnswersForQuiz = useCallback((quizId: string, questions: Question[]) => {
-        setAllUserAnswers(prevAnswers => {
-            console.log(`Initializing answers for quiz ${quizId} with ${questions.length} questions`);
-            return { ...prevAnswers, [quizId]: Array(questions.length).fill(-1) };
-        });
-    }, []); // No dependencies needed
+        setAllUserAnswers(prev => ({ ...prev, [quizId]: Array(questions.length).fill(-1) }));
+    }, []);
 
-    useEffect(() => {
-        fetchQuizzes(); // Initial fetch
-    }, [fetchQuizzes]);
+    useEffect(() => { fetchQuizzes(); }, [fetchQuizzes]);
 
     // --- Event Handlers ---
     const handleSelectQuiz = (id: string) => {
-        const selectedQuiz = quizzes.find(quiz => quiz.id === id);
-        if (selectedQuiz && id !== currentQuizId) { // Only proceed if actually changing quiz
-            setCurrentQuizId(id);
-            // Ensure answers are initialized (or reset if needed) for the selected quiz
-             if (!allUserAnswers[id] || allUserAnswers[id].length !== selectedQuiz.questions.length) {
-                 initializeAnswersForQuiz(id, selectedQuiz.questions);
-             }
-            console.log("Selected Quiz ID:", id);
-        } else if (id === currentQuizId) {
-            console.log("Quiz already selected:", id);
-            // Maybe close manager here if desired?
-        }
+        if (id !== currentQuizId) setCurrentQuizId(id); // Let state change trigger effects
+        else console.log("Quiz already selected");
     };
 
-    const handleAnswerUpdate = useCallback((quizId: string, questionIndex: number, answerIndex: number) => {
-        setAllUserAnswers(prevAnswers => {
-            // Ensure the entry for the quiz exists
-            const currentAnswers = prevAnswers[quizId] ? [...prevAnswers[quizId]] : [];
-            if (questionIndex >= 0 && questionIndex < currentAnswers.length) {
-                currentAnswers[questionIndex] = answerIndex;
-                return { ...prevAnswers, [quizId]: currentAnswers };
+    const handleAnswerUpdate = useCallback((quizId: string, originalQuestionIndex: number, originalAnswerIndex: number) => {
+        setAllUserAnswers(prev => {
+            const current = prev[quizId] ? [...prev[quizId]] : [];
+            if (originalQuestionIndex >= 0 && originalQuestionIndex < current.length) {
+                current[originalQuestionIndex] = originalAnswerIndex;
+                return { ...prev, [quizId]: current };
             }
-            console.error(`Invalid questionIndex ${questionIndex} in handleAnswerUpdate for quiz ${quizId}`);
-            return prevAnswers;
+            return prev;
         });
     }, []);
 
-    // --- NEW: Reset answers for the current quiz (after review) ---
     const handleResetQuizAnswers = useCallback((quizId: string) => {
         const quizToReset = quizzes.find(q => q.id === quizId);
         if (quizToReset) {
-            console.log(`Resetting answers for quiz: ${quizId}`);
             initializeAnswersForQuiz(quizId, quizToReset.questions);
-            // The Quiz component itself will handle resetting its internal state (finished, score, index)
-        } else {
-            console.warn(`Attempted to reset answers for non-existent quiz ID: ${quizId}`);
+            setQuizFinished(false); setCurrentScore(0); setCurrentDisplayIndex(0); setCurrentlyDisplayedQuestion(null); // Reset lifted state
         }
-    }, [quizzes, initializeAnswersForQuiz]); // Dependencies
+    }, [quizzes, initializeAnswersForQuiz]);
 
-    // --- NEW: Toggle Shuffle Options ---
-    const handleShuffleQuestionsToggle = useCallback(() => {
-        setShuffleQuestions(prev => !prev);
-    }, []);
-    const handleShuffleAnswersToggle = useCallback(() => {
-        setShuffleAnswers(prev => !prev);
+    const handleShuffleQuestionsToggle = useCallback(() => setShuffleQuestions(p => !p), []);
+    const handleShuffleAnswersToggle = useCallback(() => setShuffleAnswers(p => !p), []);
+
+    // Callback for Quiz component to report its current displayed question
+    const handleDisplayedQuestionUpdate = useCallback((question: DisplayQuestion | null) => {
+        console.log("App: Received displayed question update:", question?.question_text ?? 'None');
+        setCurrentlyDisplayedQuestion(question);
     }, []);
 
     // --- Callbacks for Create/Edit/Delete ---
-    const handleQuizCreated = (createdQuiz: QuizData | null) => {
-        fetchQuizzes(createdQuiz?.id ?? null);
-    };
-    const handleQuizUpdated = () => {
-        fetchQuizzes(currentQuizId);
-    };
-    const handleDeleteQuizRequest = (id: string, title: string) => {
-        setQuizToDelete({ id, title });
-        setDeleteError(null);
-        setShowDeleteConfirm(true);
-    };
+    const handleQuizCreated = (createdQuiz: QuizData | null) => fetchQuizzes(createdQuiz?.id ?? null);
+    const handleQuizUpdated = () => fetchQuizzes(currentQuizId);
+    const handleDeleteQuizRequest = (id: string, title: string) => { setShowDeleteConfirm(true); setQuizToDelete({ id, title }); setDeleteError(null); };
     const confirmDeleteQuiz = async () => {
-        // ... (delete logic remains the same) ...
-        if (!quizToDelete) return;
-        setIsDeleting(true);
-        setDeleteError(null);
-        try {
-            await axios.delete(`${API_BASE_URL}/api/quizzes/${quizToDelete.id}`);
-            setShowDeleteConfirm(false);
-            // Select the next available quiz, or null if none left
-            const nextSelectedId = quizzes.length > 1 && currentQuizId === quizToDelete.id
-                ? quizzes.find(q => q.id !== quizToDelete.id)?.id ?? (quizzes.length > 1 ? quizzes[0].id : null)
-                : (quizzes.length > 1 ? currentQuizId : null); // Keep current if deleting other, else null if only one
-            setQuizToDelete(null);
-            fetchQuizzes(nextSelectedId);
-        } catch (err) {
-             console.error("Error deleting quiz:", err);
-             let message = 'Failed to delete quiz.';
-             if (axios.isAxiosError(err)) { message = err.response?.data?.error || err.message; }
-             else if (err instanceof Error) { message = err.message; }
-             setDeleteError(message);
-        } finally {
-            setIsDeleting(false);
+         if (!quizToDelete) return; setIsDeleting(true); setDeleteError(null);
+         try {
+             await axios.delete(`${API_BASE_URL}/api/quizzes/${quizToDelete.id}`);
+             setShowDeleteConfirm(false);
+             const remaining = quizzes.filter(q => q.id !== quizToDelete!.id);
+             const nextId = remaining.length > 0 ? remaining[0].id : null;
+             setQuizToDelete(null); fetchQuizzes(nextId); // Fetch and select next
+         } catch (err) {
+             console.error("Error deleting quiz:", err); let msg='Failed delete.';
+             if(axios.isAxiosError(err)){msg=err.response?.data?.error||err.message;}else if(err instanceof Error){msg=err.message;} setDeleteError(msg);
+         } finally { setIsDeleting(false); }
+     };
+    const cancelDeleteQuiz = () => { setShowDeleteConfirm(false); setQuizToDelete(null); setDeleteError(null); };
+
+    // --- Prepare Context for Chat ---
+    // Use useMemo to recalculate only when dependencies change
+    const chatContext = useMemo(() => {
+        let context: any = { isReviewMode: quizFinished }; // Start building context
+        if (currentQuiz) context.quizTitle = currentQuiz.title;
+
+        // Use the question reported by the Quiz component
+        if (currentlyDisplayedQuestion) {
+            context.questionText = currentlyDisplayedQuestion.question_text;
+            // Map answers, ensuring they have originalIndex if needed (Quiz adds this)
+            context.options = currentlyDisplayedQuestion.answers.map(a => a.answer_text);
+
+            const originalQuestionIndex = currentlyDisplayedQuestion.originalIndex; // Get original index
+
+            if (originalQuestionIndex !== undefined && currentQuizAnswers) {
+                 const userAnswerOriginalIndex = currentQuizAnswers[originalQuestionIndex]; // Find user's answer by original index
+
+                 if (userAnswerOriginalIndex !== -1 && userAnswerOriginalIndex !== undefined) {
+                     // Find the corresponding answer object using its original index
+                     const userAnswerObject = currentlyDisplayedQuestion.answers.find(
+                         // Assuming DisplayAnswer type has originalIndex
+                         (a: AnswerOption & { originalIndex?: number }) => a.originalIndex === userAnswerOriginalIndex
+                     );
+                     context.userAnswerText = userAnswerObject?.answer_text;
+                     context.wasCorrect = userAnswerObject?.is_correct ?? false;
+                 } else {
+                     context.userAnswerText = null; // Skipped
+                     context.wasCorrect = false;
+                 }
+            }
+             const correctAnswerObject = currentlyDisplayedQuestion.answers.find(a => a.is_correct);
+             context.correctAnswerText = correctAnswerObject?.answer_text;
         }
-    };
-    const cancelDeleteQuiz = () => {
-        setShowDeleteConfirm(false);
-        setQuizToDelete(null);
-        setDeleteError(null);
-    };
+        return context;
+    }, [currentQuiz, currentlyDisplayedQuestion, quizFinished, currentQuizAnswers]); // Dependencies for context recalc
 
     // --- Render Logic ---
     return (
         <BrowserRouter>
             <>
                 <QuizManager
-                    quizList={quizzes}
-                    selectedQuizId={currentQuizId}
-                    onSelectTitleItem={handleSelectQuiz}
-                    onDeleteQuiz={handleDeleteQuizRequest}
-                    // Pass shuffle state and handlers
-                    shuffleQuestions={shuffleQuestions}
-                    shuffleAnswers={shuffleAnswers}
-                    onShuffleQuestionsToggle={handleShuffleQuestionsToggle}
-                    onShuffleAnswersToggle={handleShuffleAnswersToggle}
+                    quizList={quizzes} selectedQuizId={currentQuizId} onSelectTitleItem={handleSelectQuiz}
+                    onDeleteQuiz={handleDeleteQuizRequest} shuffleQuestions={shuffleQuestions} shuffleAnswers={shuffleAnswers}
+                    onShuffleQuestionsToggle={handleShuffleQuestionsToggle} onShuffleAnswersToggle={handleShuffleAnswersToggle}
                 />
-                 <ChatApp />
-                 <Modal show={showDeleteConfirm} onHide={cancelDeleteQuiz} centered>
-                    {/* ... (Modal content remains the same) ... */}
+                {/* Pass accurate context */}
+                <ChatApp chatContext={chatContext} />
+
+                {/* Delete Confirmation Modal */}
+                <Modal show={showDeleteConfirm} onHide={cancelDeleteQuiz} centered>
                      <Modal.Header closeButton><Modal.Title>Confirm Deletion</Modal.Title></Modal.Header>
                      <Modal.Body>
-                         Are you sure you want to delete the quiz: <strong>{quizToDelete?.title}</strong>? This action cannot be undone.
+                         Are you sure you want to delete: <strong>{quizToDelete?.title}</strong>?
                          {deleteError && <BootstrapAlert variant="danger" className="mt-3">{deleteError}</BootstrapAlert>}
                      </Modal.Body>
                      <Modal.Footer>
@@ -227,10 +223,9 @@ function App() {
                      </Modal.Footer>
                  </Modal>
 
-                 <div className="main-content-area" style={{ paddingTop: '5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
+                <div className="main-content-area" style={{ paddingTop: '5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
                     {loading && <p className='text-center mt-5'>Loading Quizzes...</p>}
-                    {error && !loading && <p className='text-center mt-5' style={{ color: 'red' }}>Error Loading Data: {error}</p>}
-
+                    {error && !loading && <p className='text-center mt-5' style={{ color: 'red' }}>Error: {error}</p>}
                     {!loading && (
                         <Routes>
                             <Route path="/edit/:quizId" element={<QuizEditor onQuizUpdated={handleQuizUpdated} />}/>
@@ -240,22 +235,26 @@ function App() {
                                     <>
                                         <h1 style={{ textAlign: 'center' }}>{currentQuiz.title}</h1>
                                         <Quiz
-                                            key={`${currentQuiz.id}-${shuffleQuestions}-${shuffleAnswers}`} // Add shuffle states to key to force remount on change
+                                            key={`${currentQuiz.id}-${shuffleQuestions}-${shuffleAnswers}`} // Key includes shuffle state
                                             quizId={currentQuiz.id}
                                             questions={currentQuiz.questions}
                                             userAnswers={currentQuizAnswers}
                                             onAnswerUpdate={handleAnswerUpdate}
-                                            // Pass shuffle options and reset handler
                                             shuffleQuestions={shuffleQuestions}
                                             shuffleAnswers={shuffleAnswers}
-                                            onResetQuiz={handleResetQuizAnswers} // Pass reset handler
+                                            onResetQuiz={handleResetQuizAnswers}
+                                            // Pass state & setters
+                                            isReviewMode={quizFinished}
+                                            currentDisplayIndex={currentDisplayIndex}
+                                            score={currentScore}
+                                            setQuizFinished={setQuizFinished}
+                                            setCurrentDisplayIndex={setCurrentDisplayIndex}
+                                            setScore={setCurrentScore}
+                                            // Pass callback for Quiz to report its current question
+                                            onDisplayedQuestionChange={handleDisplayedQuestionUpdate}
                                         />
                                     </>
-                                ) : !error ? (
-                                    <p className='text-center mt-5'>
-                                        {quizzes.length === 0 ? "No quizzes available. Create one!" : "Please select a quiz from the menu."}
-                                    </p>
-                                ) : null
+                                ) : !error ? ( <p className='text-center mt-5'> {quizzes.length === 0 ? "No quizzes available." : "Select a quiz."} </p> ) : null
                             } />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>

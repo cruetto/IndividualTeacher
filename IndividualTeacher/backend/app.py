@@ -2,75 +2,66 @@
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from database import connect_to_db, get_db
+from database import connect_to_db, get_db # Assuming database.py exists and works
 from bson import ObjectId
 import json
 import os
-import uuid # Keep using UUIDs for your internal IDs
+import uuid # Using UUIDs for custom IDs
 import google.generativeai as genai # Import Google GenAI
 from dotenv import load_dotenv
-
-
+import traceback # For detailed error logging
 
 # --- Load Environment Variables ---
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}}) # Adjust as needed
-
-
+# Adjust origins for production deployment
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}})
 
 # --- Configure Google Gemini Client ---
+# One client can handle both JSON and text generation based on the call
 gemini_model = None
+gemini_generation_config_json = None # Specific config for JSON output
 try:
     google_api_key = os.environ.get("GOOGLE_API_KEY")
     if not google_api_key:
-        print("WARNING: GOOGLE_API_KEY environment variable not set. AI generation disabled.")
+        print("WARNING: GOOGLE_API_KEY environment variable not set. AI features disabled.")
     else:
         genai.configure(api_key=google_api_key)
-        # Configure the model to directly output JSON
-        generation_config = genai.types.GenerationConfig(
-            # Crucial for getting structured JSON output
+        # Config for forcing JSON output (used by quiz generator)
+        gemini_generation_config_json = genai.types.GenerationConfig(
             response_mime_type="application/json"
         )
-        # Select the Gemini model (check Google AI documentation for latest models)
-        # gemini-1.5-flash is often a good balance of cost/performance
+        # Initialize the model - use this one instance for both calls
+        # Check documentation for latest recommended models (e.g., gemini-1.5-flash-latest)
         gemini_model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            generation_config=generation_config
-            # Add safety_settings here if needed (e.g., block fewer categories)
-            # safety_settings=[...]
-            )
-        print("Google Gemini client initialized ('gemini-1.5-flash' with JSON output).")
+            "gemini-1.5-flash"
+            # Note: We apply generation_config *per call* if needed
+        )
+        print("Google Gemini client initialized ('gemini-1.5-flash').")
 except Exception as e:
      print(f"Error initializing Google Gemini client: {e}")
 
-
-
-# --- Custom JSON Encoder (Keep this) ---
+# --- Custom JSON Encoder (Handles MongoDB ObjectIds) ---
 class MongoJSONEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, ObjectId): return str(o)
         return super().default(o)
 app.json_encoder = MongoJSONEncoder
 
-
-
 # --- Connect to DB ---
 try:
-    connect_to_db()
+    connect_to_db() # Function from database.py
     print("Database connection established successfully.")
 except Exception as e:
     print(f"FATAL: Could not connect to database on startup: {e}")
     import sys
     sys.exit(1)
 
-
-
-# --- Helper function to create the prompt (extracted for clarity) ---
+# --- Helper function to create the Quiz Generation Prompt ---
 def create_quiz_prompt(topic: str, num_questions: int) -> str:
-    """Generates the precise prompt for the LLMs, requesting JSON output."""
-    # Using the well-defined prompt structure you refined
+    """Generates the precise prompt for the LLMs, requesting JSON output for quizzes."""
+    # Using the well-defined prompt structure you refined previously
     prompt = f"""
 Generate exactly {num_questions} multiple-choice quiz questions about the topic: "{topic}".
 
@@ -105,25 +96,27 @@ Ensure the entire output is only the valid JSON object with the "questions" key 
 """
     return prompt.strip()
 
+# =========================================
+# --- Standard Quiz CRUD API Endpoints ---
+# =========================================
 
-
-# --- GET /api/quizzes (No changes needed) ---
+# --- GET /api/quizzes ---
 @app.route('/api/quizzes', methods=['GET'])
 def get_all_quizzes():
     print("GET /api/quizzes request received")
     try:
         db = get_db()
         quizzes_collection = db.quizzes
+        # Use projection {'_id': 0} to exclude MongoDB's internal ID
         all_quizzes = list(quizzes_collection.find({}, {'_id': 0}))
         return jsonify(all_quizzes)
     except Exception as e:
         print(f"Error fetching quizzes: {e}")
         return jsonify({"error": "Failed to fetch quizzes from database"}), 500
 
-# --- POST /api/quizzes (Manual Add - No changes needed) ---
+# --- POST /api/quizzes (Manual Add) ---
 @app.route('/api/quizzes', methods=['POST'])
 def add_quiz():
-    # ... (previous code for manual adding) ...
     print("POST /api/quizzes request received (Manual Add)")
     try:
         db = get_db()
@@ -131,9 +124,14 @@ def add_quiz():
         data = request.get_json()
         if not data: return jsonify({"error": "Request body must contain JSON data"}), 400
         if 'title' not in data or not data['title']: return jsonify({"error": "Missing 'title'"}), 400
+
+        # Ensure custom 'id' exists (generate if needed)
         if 'id' not in data: data['id'] = str(uuid.uuid4())
         if 'questions' not in data: data['questions'] = []
+        # TODO: Consider adding ID generation for questions/answers in manual add too
+
         insert_result = quizzes_collection.insert_one(data)
+        # Fetch using custom 'id' and exclude '_id'
         new_quiz = quizzes_collection.find_one({"id": data['id']}, {'_id': 0})
         if not new_quiz: return jsonify({"error": "Failed to retrieve newly added quiz"}), 500
         return jsonify(new_quiz), 201
@@ -141,186 +139,26 @@ def add_quiz():
         print(f"Error adding manual quiz: {e}")
         return jsonify({"error": "Failed to add quiz manually"}), 500
 
-
-
-# --- *** MODIFIED: API endpoint to GENERATE a quiz using Google Gemini *** ---
-@app.route('/api/quizzes/generate', methods=['POST'])
-def generate_quiz():
-    print("POST /api/quizzes/generate request received (Using Gemini)")
-    if not gemini_model: # Check if Gemini client is initialized
-        return jsonify({"error": "AI service (Gemini) is not configured or API key is missing."}), 503
-
-    try:
-        data = request.get_json()
-        if not data: return jsonify({"error": "Request body must contain JSON data"}), 400
-
-        req_title = data.get('title')
-        topic = data.get('topic')
-        num_questions = data.get('num_questions', 5)
-
-        if not req_title or not topic:
-            return jsonify({"error": "Missing 'title' or 'topic' in request body"}), 400
-        if not isinstance(num_questions, int) or num_questions < 1 or num_questions > 20:
-             return jsonify({"error": "Invalid 'num_questions' (must be int between 1 and 20)"}), 400
-
-        # --- Create the prompt using the helper function ---
-        prompt = create_quiz_prompt(topic, num_questions)
-
-        print(f"Sending prompt to Gemini for topic: '{topic}' ({num_questions} questions)")
-        # --- Call Google Gemini API ---
-        try:
-            # Call the Gemini model
-            response = gemini_model.generate_content(prompt)
-
-            # --- Handle Gemini Response ---
-            if response.parts:
-                ai_response_content = response.text.strip() # .text gets the content
-                print("Received response from Gemini.")
-            else:
-                # Log detailed blocking information if available
-                print("Gemini Error: No content generated or response was blocked.")
-                error_message = "AI failed to generate content."
-                try:
-                    print(f"Prompt Feedback: {response.prompt_feedback}")
-                    if response.candidates:
-                        reason = response.candidates[0].finish_reason
-                        print(f"Finish Reason: {reason}")
-                        if reason == 'SAFETY':
-                             error_message = "AI content generation blocked due to safety settings."
-                             print(f"Safety Ratings: {response.candidates[0].safety_ratings}")
-
-                except Exception as feedback_err:
-                    print(f"Could not access detailed Gemini feedback: {feedback_err}")
-                # Raise an error that will be caught by the outer 'except' block
-                raise ValueError(error_message)
-
-        except Exception as ai_error:
-             # Catch errors during the API call itself or the ValueError raised above
-             print(f"Error interacting with Gemini API: {ai_error}")
-             user_message = f"Failed to generate quiz content from AI service: {ai_error}"
-             # Check for common API key errors (may vary based on google-generativeai library versions)
-             if "api key" in str(ai_error).lower() or "permission denied" in str(ai_error).lower():
-                 user_message = "AI service authentication failed. Check Google API key."
-
-             return jsonify({"error": user_message}), 503 # Service Unavailable or specific error
-
-        # --- Parse and Validate AI Response ---
-        # (This part remains largely the same as we expect JSON)
-        try:
-            if not ai_response_content: raise ValueError("AI returned empty content string.")
-
-            # Parse the JSON string from the AI response
-            # Gemini (with response_mime_type="application/json") should return just the JSON object string
-            generated_data = json.loads(ai_response_content)
-
-            # Validate the top-level structure
-            if not isinstance(generated_data, dict) or "questions" not in generated_data:
-                 raise ValueError("AI response is not a JSON object with a 'questions' key.")
-            generated_questions = generated_data["questions"]
-            if not isinstance(generated_questions, list):
-                 raise ValueError("The 'questions' field in AI response is not a JSON array.")
-
-            # Basic validation of generated questions count
-            if len(generated_questions) != num_questions:
-                 print(f"Warning: AI generated {len(generated_questions)} questions, requested {num_questions}.")
-
-            # ** TODO: Add the same robust validation as before **
-            # Check question structure, answers, exactly one correct, UUIDs etc.
-
-            print(f"Successfully parsed {len(generated_questions)} questions from Gemini response.")
-
-        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
-            print(f"Error parsing or validating AI (Gemini) response: {parse_error}")
-            print("--- Raw AI (Gemini) Response ---")
-            print(ai_response_content)
-            print("--- End Raw AI Response ---")
-            return jsonify({"error": "Received invalid data format from AI generator."}), 500
-
-        # --- Prepare and Save Quiz Document (No changes needed here) ---
-        db = get_db()
-        quizzes_collection = db.quizzes
-
-        # Inside generate_quiz function, after parsing 'generated_questions'
-
-        validated_questions = []
-        for q_data in generated_questions:
-            question_id = str(uuid.uuid4()) # Generate question ID
-            validated_answers = []
-            if "answers" in q_data and isinstance(q_data["answers"], list):
-                 for a_data in q_data["answers"]:
-                     validated_answers.append({
-                         "id": str(uuid.uuid4()), # Generate answer ID
-                         "answer_text": a_data.get("answer_text", "N/A"),
-                         "is_correct": a_data.get("is_correct", False)
-                     })
-            validated_questions.append({
-                "id": question_id, # Use generated ID
-                "question_text": q_data.get("question_text", "N/A"),
-                "type": q_data.get("type", "multiple_choice"),
-                "answers": validated_answers
-            })
-
-        print(f"Added UUIDs to {len(validated_questions)} questions.")
-        generated_questions = validated_questions # Replace with processed list
-
-        # --- Prepare and Save Quiz Document ---
-        # ... (rest of the function uses the generated_questions list with IDs) ...
-        new_quiz_doc = {
-            "id": str(uuid.uuid4()),
-            "title": req_title,
-            "topic": topic,
-            "questions": generated_questions # <-- Use questions with IDs
-        }
-        # ... (rest of save logic) ...
-
-        insert_result = quizzes_collection.insert_one(new_quiz_doc)
-        print(f"Inserted quiz with custom ID: {new_quiz_doc['id']}, MongoDB _id: {insert_result.inserted_id}")
-
-        # --- Fetch and Return (excluding _id) (No changes needed here) ---
-        created_quiz = quizzes_collection.find_one({"id": new_quiz_doc['id']}, {'_id': 0})
-        if not created_quiz:
-             print(f"CRITICAL: Failed to retrieve quiz {new_quiz_doc['id']} immediately after insertion.")
-             return jsonify({"error": "Failed to confirm quiz creation after saving"}), 500
-
-        print(f"Successfully generated and saved quiz '{created_quiz['title']}' using Gemini")
-        return jsonify(created_quiz), 201
-
-    except Exception as e:
-        # Catch-all for unexpected errors in the route logic
-        print(f"Unexpected error in /api/quizzes/generate (Gemini): {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": "An unexpected server error occurred during quiz generation."}), 500
-
-
-
-
-
-
+# --- DELETE /api/quizzes/:quiz_id ---
 @app.route('/api/quizzes/<quiz_id>', methods=['DELETE'])
 def delete_quiz(quiz_id):
     print(f"DELETE /api/quizzes/{quiz_id} request received")
     try:
         db = get_db()
         quizzes_collection = db.quizzes
-
-        # Find using the custom 'id' field (which should be a string UUID)
-        delete_result = quizzes_collection.delete_one({"id": quiz_id})
+        delete_result = quizzes_collection.delete_one({"id": quiz_id}) # Match custom string ID
 
         if delete_result.deleted_count == 1:
             print(f"Successfully deleted quiz with ID: {quiz_id}")
-            # 204 No Content is often used for successful DELETE with no body
-            return '', 204
+            return '', 204 # No Content
         else:
             print(f"Quiz with ID {quiz_id} not found for deletion.")
             return jsonify({"error": "Quiz not found"}), 404
-
     except Exception as e:
         print(f"Error deleting quiz {quiz_id}: {e}")
         return jsonify({"error": "Failed to delete quiz"}), 500
 
-
-# --- *** NEW: API endpoint to UPDATE (PUT) a quiz *** ---
+# --- PUT /api/quizzes/:quiz_id (Update) ---
 @app.route('/api/quizzes/<quiz_id>', methods=['PUT'])
 def update_quiz(quiz_id):
     print(f"PUT /api/quizzes/{quiz_id} request received")
@@ -328,56 +166,233 @@ def update_quiz(quiz_id):
         db = get_db()
         quizzes_collection = db.quizzes
         updated_data = request.get_json()
+        if not updated_data: return jsonify({"error": "Request body must contain JSON data"}), 400
 
-        if not updated_data:
-            return jsonify({"error": "Request body must contain JSON data"}), 400
+        # --- Basic Validation ---
+        if 'id' not in updated_data or updated_data['id'] != quiz_id: return jsonify({"error": "Quiz ID mismatch"}), 400
+        if 'title' not in updated_data or not updated_data['title']: return jsonify({"error": "Missing 'title'"}), 400
+        if 'questions' not in updated_data or not isinstance(updated_data['questions'], list): return jsonify({"error": "Missing 'questions' array"}), 400
+        # TODO: Add deeper validation of questions/answers structure
 
-        # --- Validation (Crucial!) ---
-        # Ensure required fields are present (title, questions as list, etc.)
-        if 'id' not in updated_data or updated_data['id'] != quiz_id:
-             return jsonify({"error": "Quiz ID in body does not match URL ID"}), 400
-        if 'title' not in updated_data or not updated_data['title']:
-             return jsonify({"error": "Missing or empty 'title'"}), 400
-        if 'questions' not in updated_data or not isinstance(updated_data['questions'], list):
-            return jsonify({"error": "Missing or invalid 'questions' array"}), 400
-        # ** TODO: Add deeper validation for questions and answers structure **
-        # - Check IDs, question_text, answers array, answer_text, is_correct boolean etc.
-
-
-        # --- Perform Update ---
-        # replace_one finds the document by custom 'id' and replaces its entire content
-        # (excluding the immutable MongoDB _id) with the provided data.
-        update_result = quizzes_collection.replace_one(
-            {"id": quiz_id}, # Filter to find the document by custom ID
-            updated_data     # The new content for the document
-            # upsert=False by default (don't create if not found)
-        )
+        # Perform replacement using custom 'id' as the filter
+        update_result = quizzes_collection.replace_one({"id": quiz_id}, updated_data)
 
         if update_result.matched_count == 1:
-            if update_result.modified_count == 1:
-                print(f"Successfully updated quiz with ID: {quiz_id}")
-                 # Fetch the updated document (excluding _id) to return it
-                updated_quiz = quizzes_collection.find_one({"id": quiz_id}, {'_id': 0})
-                return jsonify(updated_quiz), 200 # OK
-            else:
-                 print(f"Quiz {quiz_id} found but no changes were needed.")
-                 # Still return the document, maybe with 200 OK or 304 Not Modified? 200 is simpler.
-                 updated_quiz = quizzes_collection.find_one({"id": quiz_id}, {'_id': 0})
-                 return jsonify(updated_quiz), 200
+            print(f"Quiz {quiz_id} {'updated' if update_result.modified_count == 1 else 'found but not modified'}.")
+            updated_quiz = quizzes_collection.find_one({"id": quiz_id}, {'_id': 0}) # Fetch updated, exclude _id
+            return jsonify(updated_quiz), 200 # OK
         else:
-            print(f"Quiz with ID {quiz_id} not found for update.")
+            print(f"Quiz {quiz_id} not found for update.")
             return jsonify({"error": "Quiz not found"}), 404
-
     except Exception as e:
         print(f"Error updating quiz {quiz_id}: {e}")
-        import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to update quiz"}), 500
 
+# ==================================
+# --- AI Interaction Endpoints ---
+# ==================================
+
+# --- POST /api/quizzes/generate (AI Quiz Creation) ---
+@app.route('/api/quizzes/generate', methods=['POST'])
+def generate_quiz():
+    print("POST /api/quizzes/generate request received (Using Gemini)")
+    if not gemini_model or not gemini_generation_config_json:
+        return jsonify({"error": "AI service (Gemini) is not configured properly for JSON generation."}), 503
+
+    try:
+        data = request.get_json()
+        if not data: return jsonify({"error": "Request body must contain JSON data"}), 400
+        req_title = data.get('title')
+        topic = data.get('topic')
+        num_questions = data.get('num_questions', 5)
+
+        # Input validation
+        if not req_title or not topic: return jsonify({"error": "Missing 'title' or 'topic'"}), 400
+        if not isinstance(num_questions, int) or num_questions < 1 or num_questions > 20: return jsonify({"error": "Invalid 'num_questions'"}), 400
+
+        prompt = create_quiz_prompt(topic, num_questions)
+        print(f"Sending quiz generation prompt to Gemini for topic: '{topic}'")
+
+        # --- Call Gemini API with JSON config ---
+        try:
+            response = gemini_model.generate_content(
+                prompt,
+                generation_config=gemini_generation_config_json # Apply JSON config
+            )
+            if not response.parts: raise ValueError("AI failed to generate content or was blocked.")
+            ai_response_content = response.text.strip()
+            print("Received quiz generation response from Gemini.")
+        except Exception as ai_error:
+             # ... (Error handling for AI call as before) ...
+             print(f"Error interacting with Gemini API: {ai_error}")
+             user_message = f"Failed to generate quiz content from AI: {ai_error}"
+             if "api key" in str(ai_error).lower() or "permission denied" in str(ai_error).lower(): user_message = "AI service authentication failed."
+             elif "quota" in str(ai_error).lower(): user_message = "AI service quota exceeded."
+             return jsonify({"error": user_message}), 503
+
+        # --- Parse and Validate JSON Response ---
+        try:
+            if not ai_response_content: raise ValueError("AI returned empty content string.")
+            generated_data = json.loads(ai_response_content)
+            if not isinstance(generated_data, dict) or "questions" not in generated_data: raise ValueError("AI response not JSON object with 'questions' key.")
+            generated_questions = generated_data["questions"]
+            if not isinstance(generated_questions, list): raise ValueError("'questions' field not a JSON array.")
+            if len(generated_questions) != num_questions: print(f"Warning: AI generated {len(generated_questions)} questions, requested {num_questions}.")
+            # TODO: Add robust validation of questions/answers structure
+            print(f"Successfully parsed {len(generated_questions)} questions from Gemini.")
+        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
+            # ... (Error handling for parsing as before) ...
+            print(f"Error parsing/validating AI response: {parse_error}")
+            print("--- Raw AI Response ---\n", ai_response_content, "\n--- End Raw Response ---")
+            return jsonify({"error": "Received invalid data format from AI generator."}), 500
+
+        # --- Add IDs and Prepare Document ---
+        validated_questions = []
+        for q_data in generated_questions:
+            question_id = str(uuid.uuid4())
+            validated_answers = []
+            if "answers" in q_data and isinstance(q_data["answers"], list):
+                 for a_data in q_data["answers"]:
+                     validated_answers.append({
+                         "id": str(uuid.uuid4()),
+                         "answer_text": a_data.get("answer_text", "N/A"),
+                         "is_correct": a_data.get("is_correct", False)
+                     })
+            validated_questions.append({
+                "id": question_id,
+                "question_text": q_data.get("question_text", "N/A"),
+                "type": q_data.get("type", "multiple_choice"),
+                "answers": validated_answers
+            })
+        generated_questions = validated_questions
+
+        # --- Save to Database ---
+        db = get_db()
+        quizzes_collection = db.quizzes
+        new_quiz_doc = {
+            "id": str(uuid.uuid4()),
+            "title": req_title,
+            "topic": topic,
+            "questions": generated_questions
+        }
+        insert_result = quizzes_collection.insert_one(new_quiz_doc)
+        print(f"Inserted quiz ID: {new_quiz_doc['id']}, MongoDB _id: {insert_result.inserted_id}")
+
+        # --- Fetch and Return Created Quiz ---
+        created_quiz = quizzes_collection.find_one({"id": new_quiz_doc['id']}, {'_id': 0})
+        if not created_quiz: return jsonify({"error": "Failed to confirm quiz creation after saving"}), 500
+        print(f"Successfully generated/saved quiz '{created_quiz['title']}'")
+        return jsonify(created_quiz), 201
+
+    except Exception as e:
+        print(f"Unexpected error in /api/quizzes/generate: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Server error during quiz generation."}), 500
 
 
+# --- POST /api/chat (AI Chat Interaction) ---
+@app.route('/api/chat', methods=['POST'])
+def handle_chat():
+    print("POST /api/chat request received")
+    if not gemini_model:
+        return jsonify({"error": "AI chat service is not configured."}), 503
 
-# --- Run the App (No changes needed) ---
+    try:
+        data = request.get_json()
+        if not data: return jsonify({"error": "Request body must contain JSON data"}), 400
+
+        user_message = data.get('message')
+        context = data.get('context', {}) # Frontend sends context object
+
+        if not user_message: return jsonify({"error": "Missing 'message'"}), 400
+
+        # --- Build Contextual Prompt for Chat ---
+        prompt_parts = ["You are a helpful quiz assistant."]
+
+        # Add general quiz context if available
+        if context.get('quizTitle'):
+            prompt_parts.append(f"The user is interacting with the quiz titled '{context['quizTitle']}'.")
+
+        # Add specific question context if available
+        if context.get('questionText'):
+            prompt_parts.append(f"The current question is: \"{context['questionText']}\"")
+            if context.get('options'):
+                 options_str = ", ".join([f"'{opt}'" for opt in context['options']])
+                 prompt_parts.append(f"Options: {options_str}.")
+
+            # Handle review mode context
+            if context.get('isReviewMode'):
+                 prompt_parts.append("\nThe user is currently reviewing their answer to this question.")
+                 user_answer = context.get('userAnswerText')
+                 correct_answer = context.get('correctAnswerText')
+                 was_correct = context.get('wasCorrect') # Boolean from context
+
+                 if user_answer is not None:
+                     correctness_str = "correct" if was_correct else "incorrect"
+                     prompt_parts.append(f"They previously answered '{user_answer}', which was {correctness_str}.")
+                     if not was_correct and correct_answer:
+                         prompt_parts.append(f"The correct answer is '{correct_answer}'.")
+                 else:
+                     prompt_parts.append("They did not answer this question during the quiz.")
+                     if correct_answer:
+                          prompt_parts.append(f"The correct answer is '{correct_answer}'.")
+                 prompt_parts.append("Focus on explaining why the correct answer is right or why their answer was wrong based on their query.")
+            else: # Active quiz mode context
+                 prompt_parts.append("\nThe user is actively taking the quiz and asking about this question.")
+                 prompt_parts.append("Provide helpful hints or conceptual explanations related ONLY to the question or its options. DO NOT REVEAL THE CORRECT ANSWER directly.")
+        else:
+            prompt_parts.append("\nThe user is asking a general question, possibly about the quiz topic.")
+
+        # Add user's specific query
+        prompt_parts.append(f"\nUser's message: \"{user_message}\"")
+        prompt_parts.append("\nAssistant's concise and helpful response:")
+
+        final_prompt = "\n".join(prompt_parts)
+        print("\n--- Sending Chat Prompt to Gemini ---")
+        print(final_prompt)
+        print("-----------------------------------\n")
+
+        # --- Call Gemini API for Text Generation ---
+        try:
+            # No specific generation config needed, default text output is fine for chat
+            response = gemini_model.generate_content(final_prompt)
+
+            if response.parts:
+                ai_reply = response.text
+                print("Received chat reply from Gemini.")
+            else:
+                # Handle blocking/errors (similar logic as quiz generation)
+                print("Gemini Error: No chat reply generated or blocked.")
+                error_message = "AI failed to generate a reply."
+                try:
+                    if response.candidates and response.candidates[0].finish_reason == 'SAFETY':
+                         error_message = "AI reply blocked due to safety settings."
+                         # Log details if needed: print(f"Safety Ratings: {response.candidates[0].safety_ratings}")
+                except Exception: pass # Ignore errors fetching details
+                return jsonify({"error": error_message}), 500
+
+        except Exception as ai_error:
+             # ... (Error handling for API call as before) ...
+             print(f"Error calling Gemini API for chat: {ai_error}")
+             user_message = f"Failed to get reply from AI service: {ai_error}"
+             if "api key" in str(ai_error).lower() or "permission denied" in str(ai_error).lower(): user_message = "AI service authentication failed."
+             return jsonify({"error": user_message}), 503
+
+        # --- Return AI Reply ---
+        return jsonify({"reply": ai_reply})
+
+    except Exception as e:
+        # Catch-all for unexpected errors in the route
+        print(f"Unexpected error in /api/chat endpoint: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "An unexpected server error occurred in chat."}), 500
+
+# ==================
+# --- Run the App ---
+# ==================
 if __name__ == '__main__':
+    # Use 0.0.0.0 to be accessible within network/Codespaces
+    # Set debug=False for production
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=True, host='0.0.0.0', port=port)
