@@ -1,10 +1,11 @@
 TODO:
 
-    [] Chat with LLM
-    [] Add chat context from current question, answer
+    [] End Review doesnt shuffle quizzes
 
-    [] When answered incorrectly generate LLM response why it was incorrect
+    New question types:
+        [] multiplechoice
+        [] skipped words in text
 
-    [] New question types
 
-    [] Scroll throught the questions
+    [] google authorization
+    [] collection in db for every user

@@ -126,7 +126,7 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
           <InputGroup className="mt-auto p-2 bg-light border-top">
             <Form.Control
               value={message} onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress} placeholder="Ask a question..." // Shorter placeholder
+              onKeyDown={handleKeyPress} placeholder="Ask a question..." // Shorter placeholder
               disabled={isLoading} aria-label="Chat message input"
               style={{ fontSize: '0.95rem' }}
             />
