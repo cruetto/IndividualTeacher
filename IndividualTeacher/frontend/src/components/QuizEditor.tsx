@@ -24,51 +24,77 @@ const QuizEditor: React.FC<Props> = ({ onQuizUpdated }) => {
     const [error, setError] = useState<string | null>(null);
 
     // --- Fetch Quiz Data ---
-    useEffect(() => {
-        const fetchQuiz = async () => {
-            setIsLoading(true);
-            setError(null);
-            setSelectedQuestionId(null); // Reset selection on load
-            setEditingQuiz(null); // Reset editing data on load
-
-            if (!quizId) {
-                setError("No Quiz ID provided.");
-                setIsLoading(false);
-                return;
-            }
-            try {
-                 console.log(`Fetching quiz for edit: ${quizId}`);
-                 // Preferred: Use a specific endpoint if available
-                 // const response = await axios.get<QuizData>(`${API_BASE_URL}/api/quizzes/${quizId}`);
-                 // const foundQuiz = response.data;
-
-                 // Workaround: Fetch all and filter
-                 const response = await axios.get<QuizData[]>(`${API_BASE_URL}/api/quizzes`);
-                 const foundQuiz = response.data.find(q => q.id === quizId);
-
-                if (foundQuiz) {
-                    console.log("Found quiz:", JSON.stringify(foundQuiz, null, 2)); // Log initial data
-                    // Ensure deep copy for editing state
-                    setEditingQuiz(JSON.parse(JSON.stringify(foundQuiz)));
-                    if (foundQuiz.questions.length > 0) {
-                        setSelectedQuestionId(foundQuiz.questions[0].id); // Select first question
-                        console.log("Selected first question ID:", foundQuiz.questions[0].id);
-                    } else {
-                         console.log("Quiz has no questions initially.");
-                    }
-                } else {
-                    setError(`Quiz with ID ${quizId} not found.`);
-                     console.error(`Quiz with ID ${quizId} not found in fetched list.`);
+        // --- Fetch Specific Quiz Data ---
+        useEffect(() => {
+            const fetchQuiz = async () => {
+                setIsLoading(true);
+                setError(null);
+                setSelectedQuestionId(null); // Reset selection on load
+                setEditingQuiz(null);       // Reset editing data on load
+    
+                if (!quizId) {
+                    setError("No Quiz ID provided in URL.");
+                    setIsLoading(false);
+                    return; // Exit early if no quizId
                 }
-            } catch (err) {
-                console.error("Error fetching quiz:", err);
-                setError("Failed to load quiz data.");
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchQuiz();
-    }, [quizId]); // Refetch if quizId changes
+                try {
+                     console.log(`Fetching specific quiz for edit: ${quizId}`);
+                     // --- Call the NEW backend endpoint to get a single quiz by ID ---
+                     const response = await axios.get<QuizData>(
+                         `${API_BASE_URL}/api/quizzes/${quizId}`, // Use the specific ID route
+                         { withCredentials: true } // IMPORTANT: Send cookies for authentication
+                     );
+                     const foundQuiz = response.data; // Directly get the quiz data
+    
+                    // Backend should have returned 404/403 if not found/owned, but check data just in case
+                    if (foundQuiz && foundQuiz.id === quizId) { // Check if we got data and it matches
+                        console.log("Found quiz:", JSON.stringify(foundQuiz, null, 2));
+                        // Create a deep copy for the editing state to avoid modifying original reference
+                        setEditingQuiz(JSON.parse(JSON.stringify(foundQuiz)));
+                        // Select the first question by default if available
+                        if (foundQuiz.questions.length > 0) {
+                            setSelectedQuestionId(foundQuiz.questions[0].id);
+                            console.log("Selected first question ID:", foundQuiz.questions[0].id);
+                        } else {
+                             console.log("Quiz has no questions initially.");
+                        }
+                    } else {
+                         // This case might indicate an unexpected backend response (e.g., 200 OK with no data)
+                        setError(`Received unexpected data for quiz ID ${quizId}.`);
+                         console.error(`Backend response issue for ID: ${quizId}`, foundQuiz);
+                    }
+                } catch (err) {
+                    // Handle errors from the API call
+                    console.error("Error fetching quiz for edit:", err);
+                     let message = "Failed to load quiz data for editing.";
+                     if (axios.isAxiosError(err)) {
+                         // Provide more specific error messages based on status code
+                         if (err.response?.status === 404) {
+                             message = `Quiz not found, or you don't have permission to edit it.`;
+                         } else if (err.response?.status === 401) {
+                             message = "Authentication required to edit quizzes. Please log in.";
+                             // Optional: redirect to login or prompt login here
+                         } else if (err.response?.status === 403) {
+                              message = "Permission denied to edit this quiz.";
+                         } else {
+                             // Use backend error message if available, otherwise Axios message
+                             message = err.response?.data?.error || err.message;
+                         }
+                     } else if (err instanceof Error) {
+                         // Handle generic JavaScript errors
+                          message = err.message;
+                     }
+                     setError(message); // Set the error state to display to the user
+                } finally {
+                    // Ensure loading state is turned off regardless of success/failure
+                    setIsLoading(false);
+                }
+            };
+    
+            fetchQuiz(); // Execute the fetch function
+    
+        // Re-run this effect only if the quizId from the URL parameters changes
+        }, [quizId]);
 
     // --- State Update Handlers (Focus on Immutability) ---
 
