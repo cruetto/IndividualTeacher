@@ -189,16 +189,15 @@ const QuizManager = ({
   // --- Component Return ---
   return (
     <>
-      {/* Menu Toggle Button (fixed position) */}
+      {/* Menu Toggle Button */}
       <Button variant="primary" style={{ position: "fixed", top: "1rem", left: "1rem", zIndex: 0 }} onClick={handleShowOffcanvas}>
         ☰ Menu
       </Button>
 
-      {/* Context Menu (Right-click menu) - Renders conditionally */}
+      {/* Context Menu - Render only if needed */}
       {contextMenu.visible && contextMenu.isOwned && currentUser && (
           <Dropdown.Menu show style={{ position: 'absolute', left: `${contextMenu.x}px`, top: `${contextMenu.y}px`, zIndex: 1100 }}>
               <Dropdown.Header>{contextMenu.quizTitle || "Actions"}</Dropdown.Header>
-              {/* Edit/Delete options only appear if conditions met (checked again here for safety) */}
               <Dropdown.Item onClick={handleEditClick}>Edit Quiz</Dropdown.Item>
               <Dropdown.Item onClick={handleDeleteClick} className="text-danger">Delete Quiz</Dropdown.Item>
               <Dropdown.Divider />
@@ -207,7 +206,7 @@ const QuizManager = ({
       )}
 
       {/* Offcanvas Sidebar */}
-      <Offcanvas id="offcanvasQuizManager" show={showOffcanvas} onHide={handleCloseOffcanvas} placement="start" backdrop={true} scroll={true}>
+      <Offcanvas id="offcanvasQuizManager" show={showOffcanvas} onHide={handleCloseOffcanvas} placement="start" backdrop={false} scroll={true}>
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>Quizzy Menu</Offcanvas.Title>
         </Offcanvas.Header>
@@ -215,39 +214,40 @@ const QuizManager = ({
 
           {/* --- Authentication Section --- */}
           <div className="mb-3 border-bottom pb-3">
-              {authLoading ? ( // Show spinner during initial auth check
-                  <div className="text-center"><Spinner animation="border" size="sm" /> Loading User...</div>
-              ) : currentUser ? ( // Display user info if logged in
+              {/* Conditionally render based on authLoading FIRST */}
+              {authLoading ? (
+                   <div className="text-center"><Spinner animation="border" size="sm" /> Loading User...</div>
+              ) : currentUser ? (
+                  // Render Logged-in view if user exists
                   <div className="d-flex flex-column align-items-center">
-                       {currentUser.picture && (
+                      {currentUser.picture && (
                           <img src={currentUser.picture} alt="User profile" referrerPolicy="no-referrer" style={{ width: '40px', height: '40px', borderRadius: '50%', marginBottom: '5px'}}/>
-                       )}
-                       <span className="mb-1 text-center small">Welcome, {currentUser.name}!</span>
-                       <Button variant="outline-secondary" size="sm" onClick={handleLogoutClick} disabled={isLoggingOut}>
-                           {isLoggingOut ? <Spinner animation="border" size="sm" /> : "Logout"}
-                       </Button>
+                      )}
+                      <span className="mb-1 text-center small">Welcome, {currentUser.name}!</span>
+                      <Button variant="outline-secondary" size="sm" onClick={handleLogoutClick} disabled={isLoggingOut}>
+                          {isLoggingOut ? <Spinner animation="border" size="sm" /> : "Logout"}
+                      </Button>
                   </div>
-              ) : ( // Display Google Login button if logged out
+              ) : (
+                  // Render Logged-out view ONLY if not loading AND no user
                   <div className="d-grid">
-                       <GoogleLogin
-                          onSuccess={onLoginSuccess} // Use callbacks from props
+                      <GoogleLogin
+                          onSuccess={onLoginSuccess}
                           onError={onLoginError}
-                          useOneTap // Enable One Tap UI for convenience
-                          prompt_parent_id="google-one-tap-container" // Optional container for One Tap UI
+                          useOneTap={false} // Keep disabled for testing
                           theme="outline"
                           size="medium"
                        />
-                       {/* Display login errors from backend */}
                        {loginApiError && <Alert variant="danger" className="mt-2 p-1 text-center small">{loginApiError}</Alert>}
-                       {/* Optional container for One Tap UI positioning (can be adjusted/removed) */}
-                       <div id="google-one-tap-container" style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 1200 }}></div>
                   </div>
               )}
           </div>
           {/* --- End Authentication Section --- */}
 
+          {/* --- Rest of the Offcanvas Body --- */}
+          {/* Ensure these sections are OUTSIDE the conditional auth rendering */}
 
-          {/* Create Quiz Button (Available to guests and logged-in users) */}
+          {/* Create Quiz Button */}
           <Button variant="success" className="w-100 mb-3" onClick={handleCreateClick}>
             + Create New Quiz (AI)
           </Button>
@@ -256,36 +256,23 @@ const QuizManager = ({
           <div className="mb-3 border p-2 rounded bg-light">
             <Form.Label className="fw-bold small">Quiz Display Options</Form.Label>
             <Form.Check
-                type="switch"
-                id="shuffle-questions-check"
-                label="Shuffle Questions"
-                checked={shuffleQuestions}
-                onChange={onShuffleQuestionsToggle}
-                className="small"
+                type="switch" id="shuffle-questions-check" label="Shuffle Questions"
+                checked={shuffleQuestions} onChange={onShuffleQuestionsToggle} className="small"
             />
             <Form.Check
-                type="switch"
-                id="shuffle-answers-check"
-                label="Shuffle Answers"
-                checked={shuffleAnswers}
-                onChange={onShuffleAnswersToggle}
-                className="small"
+                type="switch" id="shuffle-answers-check" label="Shuffle Answers"
+                checked={shuffleAnswers} onChange={onShuffleAnswersToggle} className="small"
             />
           </div>
 
-
           {/* Quiz Lists Section */}
            <div style={{ flexGrow: 1, overflowY: 'auto', borderTop: '1px solid #eee', paddingTop: '10px' }}>
-               {/* Render Guest Quizzes only when logged out */}
+               {/* Conditionally render lists based on currentUser */}
                {!currentUser && renderQuizList(guestQuizList, "Temporary Quizzes", 'guest')}
-
-               {/* Render User Quizzes only when logged in */}
                {currentUser && renderQuizList(userQuizList, "My Quizzes", 'user')}
-
-               {/* Always render Public Quizzes */}
                {renderQuizList(publicQuizList, "Public Quizzes", 'public')}
 
-               {/* Overall empty state check (after initial load) */}
+               {/* Overall empty state check */}
                {!authLoading && guestQuizList.length === 0 && userQuizList.length === 0 && publicQuizList.length === 0 && (
                    <p className="text-center text-muted mt-3">No quizzes found. Create one!</p>
                )}
@@ -295,6 +282,6 @@ const QuizManager = ({
       </Offcanvas>
     </>
   );
-};
+}; // End of QuizManager component
 
 export default QuizManager;

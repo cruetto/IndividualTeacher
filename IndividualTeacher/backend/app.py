@@ -53,6 +53,26 @@ print("--- FLASK BACKEND: GLOBAL Flask-CORS initialized. ---")
 
 
 
+
+
+@app.after_request
+def add_cors_headers(response):
+    # IMPORTANT: Be careful with wildcard '*' if using credentials
+    # Use specific origin for production and when supports_credentials=True
+    frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+    response.headers.add('Access-Control-Allow-Origin', frontend_origin)
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    # print(f"DEBUG: Added manual CORS headers for origin: {frontend_origin}") # Optional: uncomment for debugging
+    return response
+# --- End Manual CORS Header Decorator ---
+
+
+
+
+
+
 # --- Gemini AI Setup ---
 gemini_model = None
 gemini_generation_config_json = None
@@ -351,17 +371,13 @@ def get_quizzes():
         found_quizzes_raw = list(quizzes_collection.find(query)) # Fetch full documents first
 
         # --- FIX: Manually Process for JSON Serialization ---
-        # Convert any ObjectId (like userId in 'my' scope, or _id if not projected out)
-        # Although our custom encoder SHOULD handle this, let's be explicit here
-        # to ensure it works, especially if projection wasn't fully effective.
         processed_quizzes = []
         for quiz in found_quizzes_raw:
             processed_quiz = {}
             for key, value in quiz.items():
                 if isinstance(value, ObjectId):
                     processed_quiz[key] = str(value) # Convert ObjectId to string
-                # You might add explicit datetime handling here too if needed,
-                # but the custom encoder should cover datetimes.
+                # Datetime should be handled by the custom encoder, but can add explicit handling if needed
                 # elif isinstance(value, datetime.datetime):
                 #     processed_quiz[key] = value.isoformat(timespec='milliseconds') + 'Z'
                 else:
@@ -378,7 +394,6 @@ def get_quizzes():
         print(f"Error fetching quizzes (scope: {scope}): {e}")
         traceback.print_exc()
         return jsonify({"error": "Failed to fetch quizzes from database"}), 500
-
 
 
 # MODIFIED: Require login for manual add, guests use generate only (transiently)
@@ -469,39 +484,42 @@ def update_quiz(quiz_id):
         updated_data = request.get_json()
 
         if not updated_data: return jsonify({"error": "Request body must contain JSON data"}), 400
-        # Basic validation of incoming data
         if not updated_data.get('title'): return jsonify({"error": "Missing 'title'"}), 400
         if 'questions' not in updated_data or not isinstance(updated_data['questions'], list): return jsonify({"error": "Missing 'questions' array"}), 400
 
-        # Ensure IDs are present/generated and match path ID
         updated_data['id'] = quiz_id # Ensure path ID overrides body ID
         for q in updated_data.get('questions', []):
              if 'id' not in q or not q['id']: q['id'] = str(uuid.uuid4())
              for a in q.get('answers', []):
                  if 'id' not in a or not a['id']: a['id'] = str(uuid.uuid4())
 
-        # Prevent changing ownership or internal ID via PUT
-        updated_data.pop('_id', None)
-        updated_data.pop('userId', None)
-        # Add the correct userId back for the replacement document
-        replacement_doc = updated_data.copy()
-        replacement_doc['userId'] = user_db_id
-
-        # Use filter ensuring user owns the document they are trying to replace
+        updated_data.pop('_id', None); updated_data.pop('userId', None)
+        replacement_doc = updated_data.copy(); replacement_doc['userId'] = user_db_id
         filter_criteria = {"id": quiz_id, "userId": user_db_id}
         update_result = quizzes_collection.replace_one(filter_criteria, replacement_doc)
 
         if update_result.matched_count == 1:
             print(f"Quiz {quiz_id} owned by {user_db_id} updated (Modified: {update_result.modified_count == 1}).")
-            # Fetch the updated document excluding internal _id to return
-            updated_quiz_data = quizzes_collection.find_one(filter_criteria, {'_id': 0})
-            if not updated_quiz_data:
-                 # Should not happen if replace_one matched, but check anyway
+            # Fetch the updated document again to return it
+            updated_quiz_from_db = quizzes_collection.find_one(filter_criteria) # Fetch full doc
+
+            if not updated_quiz_from_db:
                  print(f"Error: Failed to retrieve quiz {quiz_id} after successful update confirmation.")
                  return jsonify({"error": "Failed to retrieve updated quiz after successful update."}), 500
-            return jsonify(updated_quiz_data), 200 # OK
+
+            # --- FIX: Process the fetched data for JSON response ---
+            response_data = {}
+            for key, value in updated_quiz_from_db.items():
+                if isinstance(value, ObjectId):
+                    response_data[key] = str(value) # Convert ObjectId to string
+                else:
+                    response_data[key] = value
+            response_data.pop('_id', None) # Remove internal MongoDB ID
+
+            return jsonify(response_data), 200 # Return processed data
+
         else:
-             # Quiz not found OR user doesn't own it
+            # Quiz not found OR user doesn't own it
             quiz_exists = quizzes_collection.count_documents({"id": quiz_id}) > 0
             if quiz_exists:
                 print(f"Permission denied: User {user_db_id} tried to update quiz {quiz_id} owned by someone else.")
@@ -516,7 +534,6 @@ def update_quiz(quiz_id):
         return jsonify({"error": "Failed to update quiz"}), 500
 
 
-
 @app.route('/api/quizzes/<quiz_id>', methods=['GET'])
 @login_required # Require login to fetch any specific quiz by ID
 def get_quiz_by_id(quiz_id):
@@ -528,10 +545,9 @@ def get_quiz_by_id(quiz_id):
         quizzes_collection = db.quizzes
 
         # Find the quiz by its custom ID AND ensure it belongs to the current user
+        # Fetch the raw document including _id and userId (as ObjectId)
         quiz_data_raw = quizzes_collection.find_one(
             {"id": quiz_id, "userId": user_db_id}
-            # Removed projection temporarily to ensure we process the _id correctly below
-            # {'_id': 0}
         )
 
         if quiz_data_raw:
@@ -542,9 +558,6 @@ def get_quiz_by_id(quiz_id):
             for key, value in quiz_data_raw.items():
                 if isinstance(value, ObjectId):
                     response_data[key] = str(value) # Convert ObjectId to string
-                # Add datetime handling here if needed, though encoder should work
-                # elif isinstance(value, datetime.datetime):
-                #     response_data[key] = value.isoformat(timespec='milliseconds') + 'Z'
                 else:
                     response_data[key] = value
             response_data.pop('_id', None) # Remove internal MongoDB ID before sending
@@ -553,8 +566,6 @@ def get_quiz_by_id(quiz_id):
         else:
             # Quiz not found OR not owned by the user
             print(f"Quiz {quiz_id} not found or not owned by user {user_db_id}.")
-            # Check if it exists publicly (optional detail)
-            # quiz_exists_public = quizzes_collection.count_documents({"id": quiz_id, "userId": None}) > 0
             return jsonify({"error": "Quiz not found or permission denied."}), 404 # Not Found
 
     except Exception as e:
@@ -567,7 +578,6 @@ def get_quiz_by_id(quiz_id):
 # --- AI Interaction Endpoints ---
 # ==================================
 
-# MODIFIED: Handle guests (don't save) vs logged-in users (save)
 @app.route('/api/quizzes/generate', methods=['POST'])
 def generate_quiz():
     """Generates a quiz using AI. Saves to DB only if user is logged in."""
@@ -580,6 +590,7 @@ def generate_quiz():
 
     try:
         data = request.get_json()
+        # --- Input validation ---
         if not data or not data.get('title') or not data.get('topic'):
             return jsonify({"error": "Missing 'title' or 'topic'"}), 400
         req_title = data['title']
@@ -592,6 +603,7 @@ def generate_quiz():
         print(f"Sending quiz generation prompt to Gemini for topic: '{topic}'")
 
         # --- Call Gemini API ---
+        ai_response_content = "" # Initialize
         try:
             config_to_use = gemini_generation_config_json
             response = gemini_model.generate_content(prompt, generation_config=config_to_use)
@@ -599,13 +611,15 @@ def generate_quiz():
             ai_response_content = response.text.strip()
             print("Received quiz generation response from Gemini.")
         except Exception as ai_error:
-            # ... (handle AI errors as before) ...
-            print(f"Error interacting with Gemini API: {ai_error}"); traceback.print_exc(); user_message="AI service error."; # ... (set specific messages) ...
+            print(f"Error interacting with Gemini API: {ai_error}"); traceback.print_exc(); user_message="AI service error.";
+            if "quota" in str(ai_error).lower(): user_message = "AI quota exceeded."
+            elif "blocked" in str(ai_error).lower(): user_message = "Content blocked by AI safety filters."
+            elif "API key not valid" in str(ai_error): user_message = "AI API key is invalid."
             return jsonify({"error": user_message}), 503
 
         # --- Parse and Validate JSON Response ---
+        validated_questions = [] # Initialize
         try:
-            # ... (clean and parse ai_response_content into generated_data) ...
             if ai_response_content.startswith("```json"): ai_response_content = ai_response_content[7:]
             if ai_response_content.endswith("```"): ai_response_content = ai_response_content[:-3]
             ai_response_content = ai_response_content.strip();
@@ -613,24 +627,23 @@ def generate_quiz():
             generated_data = json.loads(ai_response_content)
             if not isinstance(generated_data, dict) or "questions" not in generated_data: raise ValueError("AI JSON missing 'questions' key.")
             if not isinstance(generated_data["questions"], list): raise ValueError("'questions' field is not a list.")
-            # ... (validate questions/answers and populate 'validated_questions' list) ...
-            validated_questions = []
+
             for q_data in generated_data["questions"]:
-                if isinstance(q_data, dict) and q_data.get("question_text") and isinstance(q_data.get("answers"), list):
-                    q_data['id'] = q_data.get('id', str(uuid.uuid4())); q_data['type'] = q_data.get('type', 'multiple_choice'); q_data['question_text'] = str(q_data['question_text'])
-                    valid_answers = []
-                    for a_data in q_data.get("answers", []):
-                        if isinstance(a_data, dict) and a_data.get("answer_text") is not None:
-                            a_data['id'] = a_data.get('id', str(uuid.uuid4())); a_data['answer_text'] = str(a_data['answer_text']); a_data['is_correct'] = bool(a_data.get('is_correct', False))
-                            valid_answers.append(a_data)
-                    q_data['answers'] = valid_answers
-                    if valid_answers: validated_questions.append(q_data)
-                else: print(f"Warning: Skipping invalid question structure: {q_data}")
+                 if isinstance(q_data, dict) and q_data.get("question_text") and isinstance(q_data.get("answers"), list):
+                      q_data['id'] = q_data.get('id', str(uuid.uuid4())); q_data['type'] = q_data.get('type', 'multiple_choice'); q_data['question_text'] = str(q_data['question_text'])
+                      valid_answers = []
+                      for a_data in q_data.get("answers", []):
+                          if isinstance(a_data, dict) and a_data.get("answer_text") is not None:
+                              a_data['id'] = a_data.get('id', str(uuid.uuid4())); a_data['answer_text'] = str(a_data['answer_text']); a_data['is_correct'] = bool(a_data.get('is_correct', False))
+                              valid_answers.append(a_data)
+                      q_data['answers'] = valid_answers
+                      if valid_answers: validated_questions.append(q_data)
+                 else: print(f"Warning: Skipping invalid question structure: {q_data}")
             if not validated_questions: raise ValueError("AI response parsed, but no valid questions found after validation.")
             print(f"Successfully parsed {len(validated_questions)} questions.")
         except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
-            # ... (handle parsing errors) ...
-            print(f"Error parsing/validating AI response: {parse_error}"); # ... (log raw response) ...
+            print(f"Error parsing/validating AI response: {parse_error}");
+            print(f"--- Raw AI Response ---\n{ai_response_content[:1000]}{'...' if len(ai_response_content) > 1000 else ''}\n--- End Raw Response ---");
             return jsonify({"error": f"Received invalid data format from AI generator: {parse_error}"}), 500
 
         # --- Create Quiz Data Object (without userId initially) ---
@@ -779,9 +792,6 @@ def handle_chat():
 # --- Run the App ---
 # ==================
 if __name__ == '__main__':
-    # Use 0.0.0.0 to be accessible within Docker/network if needed
-    # Default port 5001, changeable via environment variable 'PORT'
     port = int(os.environ.get('PORT', 5001))
-    # Set debug=True for development (enables auto-reloader and interactive debugger)
-    # Set debug=False and use a production WSGI server (like Gunicorn or Waitress) for deployment
+    print(f"--- Starting Flask server on http://0.0.0.0:{port} ---")
     app.run(debug=True, host='0.0.0.0', port=port)

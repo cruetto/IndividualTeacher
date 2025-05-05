@@ -1,5 +1,5 @@
 // frontend/src/components/QuizEditor.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect} from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Container, Form, Button, ListGroup, Card, InputGroup, Spinner, Alert, Row, Col } from 'react-bootstrap';
@@ -397,16 +397,19 @@ const QuizEditor: React.FC<Props> = ({ onQuizUpdated }) => {
                                 </Button>
                             </div>
                             {/* Scrollable Question List */}
-                            <ListGroup style={{ flexGrow: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 250px)' }}> {/* Adjust maxHeight as needed */}
+                            <ListGroup style={{ flexGrow: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 250px)' }}>
                                 {editingQuiz.questions.map((q) => (
                                     <ListGroup.Item
                                         key={q.id}
-                                        action
+                                        // Remove the 'action' prop if it renders as a button
+                                        // action
                                         active={selectedQuestionId === q.id}
-                                        onClick={() => handleQuestionSelect(q.id)}
+                                        // Apply click handler directly to the item if not using 'action'
+                                        onClick={() => !isSaving && handleQuestionSelect(q.id)} // Prevent selection while saving
                                         className="d-flex justify-content-between align-items-center"
+                                        style={{ cursor: isSaving ? 'default' : 'pointer' }} // Add pointer cursor
                                     >
-                                        {/* Prevent text overflow */}
+                                        {/* Quiz Title Span */}
                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '10px', flexGrow: 1 }}>
                                             {q.question_text || '(Untitled Question)'}
                                         </span>
@@ -414,12 +417,13 @@ const QuizEditor: React.FC<Props> = ({ onQuizUpdated }) => {
                                         <Button
                                             variant="outline-danger"
                                             size="sm"
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteQuestion(q.id); }} // Stop propagation to prevent selection
+                                            // Keep stopPropagation to prevent the ListGroup.Item's onClick
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteQuestion(q.id); }}
                                             disabled={isSaving}
                                             title="Delete Question"
-                                            style={{ flexShrink: 0 }} // Prevent button from shrinking too much
+                                            style={{ flexShrink: 0 }} // Prevent button from shrinking
                                         >
-                                            × {/* Simple delete icon */}
+                                            × {/* Use HTML entity for 'x' or an icon */}
                                         </Button>
                                     </ListGroup.Item>
                                 ))}

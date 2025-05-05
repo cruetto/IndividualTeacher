@@ -49,14 +49,13 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
             setSuccessMessage(`Quiz "${newQuizData.title}" created successfully! Redirecting...`);
             onQuizCreated(newQuizData); // Notify App.tsx and pass the data
 
-            // Clear form (optional, happens before redirect anyway)
-            // setTitle('');
-            // setTopic('');
-            // setNumQuestions(5);
-
-            // Navigate back to the main page after a short delay to show success message
-            // setTimeout(() => navigate('/'), 2000); // Navigate after 2 seconds
-            navigate('/'); // Navigate after 2 seconds
+           
+            setTimeout(() => {
+                if (newQuizData) { // Check if still valid before navigating
+                    navigate('/'); // Navigate home
+                }
+            }, 1000); // Small delay (e.g., 100ms)
+            // navigate('/'); 
 
         } catch (err) {
             console.error("Error creating quiz:", err);

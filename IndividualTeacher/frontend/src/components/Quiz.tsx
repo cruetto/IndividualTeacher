@@ -67,6 +67,7 @@ function Quiz({
   const [displayQuestions, setDisplayQuestions] = useState<DisplayQuestion[]>([]);
   // Local state ONLY for visual selection *within the currently displayed answers*
   const [selectedDisplayAnswerIndex, setSelectedDisplayAnswerIndex] = useState<number>(-1);
+  const [resetCounter, setResetCounter] = useState<number>(0);
 
   // --- Setup/Reset Display Questions Function ---
   // Processes original questions, adds original indices, and shuffles if needed
@@ -92,7 +93,8 @@ function Quiz({
     console.log("Quiz Effect 1: Setting up display questions.");
     setupDisplayQuestions();
     // We don't reset index here; App.tsx controls the currentDisplayIndex based on quiz selection/reset
-  }, [setupDisplayQuestions]); // Rerun if setup function changes (means questions or shuffle changed)
+  }, [setupDisplayQuestions, resetCounter]); // Rerun if setup function changes (means questions or shuffle changed)
+
 
   // --- Current Displayed Question Calculation (Memoized) ---
   // Calculate this based on the displayQuestions state and the index prop from App
@@ -186,9 +188,9 @@ function Quiz({
   };
 
   const handleEndReviewClick = () => {
-    onResetQuiz(quizId); // Call App's handler (resets answers & quiz state in App)
-    // No need to manually reset state here, App's state changes will trigger updates via props
-  };
+    onResetQuiz(quizId); // Call App's reset function
+    setResetCounter(prev => prev + 1); // Increment local counter
+};
 
   // --- Review Styling Helper (Use derived currentDisplayAnswers) ---
   const getReviewClass = (displayedAnswer: DisplayAnswer): string => {

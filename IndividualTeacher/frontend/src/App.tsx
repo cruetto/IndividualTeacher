@@ -1,7 +1,7 @@
 // frontend/src/App.tsx
 
 // --- Import Statements ---
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Modal, Button as BootstrapButton, Spinner as BootstrapSpinner, Alert as BootstrapAlert } from 'react-bootstrap';
@@ -580,7 +580,7 @@ function App() {
                 </Modal>
 
                 {/* Main Content Area */}
-                <div className="main-content-area" style={{ paddingTop: '5rem', paddingLeft: 'calc(250px + 2rem)', paddingRight: '2rem' }}>
+                <div className="main-content-area" style={{ paddingTop: '5rem', paddingLeft: '2rem', paddingRight: '2rem' }}>
 
                     {/* Loading Indicator: Show during initial load OR subsequent list refreshes */}
                     {(isLoadingInitialData || isLoadingQuizLists) && (
@@ -608,15 +608,15 @@ function App() {
                              <Route path="/create" element={ <QuizCreator onQuizCreated={handleQuizCreated} /> }/>
                              {/* Main quiz display route */}
                              <Route path="/" element={
-                                 // Render quiz only if lists aren't loading, no error, and a quiz is selected/found
-                                 // Check isLoadingQuizLists specifically for quiz rendering after initial load
-                                 !isLoadingQuizLists && !fetchError && currentQuizData && currentQuizAnswers ? (
+                                 // --- REVISED RENDER CONDITION ---
+                                 // 1. Do we have data for the selected quiz? If YES, render Quiz.
+                                 currentQuizData && currentQuizAnswers ? (
                                      <>
                                           <h1 style={{ textAlign: 'center', marginBottom: '2rem' }}>{currentQuizData.title}</h1>
                                           <Quiz
-                                              key={`${currentQuizData.id}-${shuffleQuestions}-${shuffleAnswers}`} // Key helps reset component on changes
+                                              key={`${currentQuizData.id}-${shuffleQuestions}-${shuffleAnswers}`} // Use composite key
                                               quizId={currentQuizData.id}
-                                              questions={currentQuizData.questions} // Pass questions from the found quiz data
+                                              questions={currentQuizData.questions}
                                               userAnswers={currentQuizAnswers}
                                               onAnswerUpdate={handleAnswerUpdate}
                                               shuffleQuestions={shuffleQuestions}
@@ -631,15 +631,18 @@ function App() {
                                               onDisplayedQuestionChange={handleDisplayedQuestionUpdate}
                                           />
                                      </>
-                                 ) : // Render message if not loading lists and no quiz selected (and no error)
-                                 !isLoadingQuizLists && !fetchError ? (
+                                 ) : // 2. If NO quiz data, are the lists currently loading? If YES, show spinner.
+                                 isLoadingQuizLists ? (
+                                     <div className='text-center mt-5 d-flex justify-content-center align-items-center'>
+                                         <BootstrapSpinner animation="border" size="sm" /> <span className="ms-2">Loading Quizzes...</span>
+                                     </div>
+                                 ) : ( // 3. If NO quiz data and NOT loading, show "Select quiz" message.
                                       <p className='text-center text-muted mt-5'>
-                                          {/* Check all lists for the empty message */}
                                           {(publicQuizzes.length === 0 && userQuizzes.length === 0 && guestQuizzes.length === 0)
                                               ? "No quizzes available. Use 'Create New Quiz'!"
                                               : "Select a quiz from the menu to start."}
                                       </p>
-                                 ) : null // Render nothing while lists load or if there was a fetch error during list load
+                                 )
                              } />
                              {/* Catch-all route redirects to home */}
                              <Route path="*" element={<Navigate to="/" replace />} />
