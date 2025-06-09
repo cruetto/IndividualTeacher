@@ -7,4 +7,6 @@ Start app:
     Terminal 2 (Frontend):
         cd frontend
         npm run dev
+
+Works only on localhost:5173
         
