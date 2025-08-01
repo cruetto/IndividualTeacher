@@ -19,6 +19,26 @@ import { QuizData, Question, DisplayQuestion, AllUserAnswers, User, ChatContext 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
 axios.defaults.withCredentials = true; // Ensure cookies are sent with requests
 
+// Add this type for better error handling
+type ApiError = {
+    message: string;
+    status?: number;
+};
+
+// Helper function for consistent error handling
+const handleApiError = (error: unknown, defaultMessage: string): ApiError => {
+    if (axios.isAxiosError(error)) {
+        return {
+            message: error.response?.data?.error || error.message,
+            status: error.response?.status
+        };
+    }
+    if (error instanceof Error) {
+        return { message: error.message };
+    }
+    return { message: defaultMessage };
+};
+
 function App() {
     // --- State Definitions ---
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -110,71 +130,66 @@ function App() {
     // --- Fetching Callbacks (depend only on stable handleSelectQuiz) ---
 
     const fetchUserQuizzes = useCallback(async (loggedInUser: User) => {
-        // Fetches quizzes belonging to the provided loggedInUser
         console.log(`(CB) Fetching quizzes for user: ${loggedInUser.id}`);
         setLoadingUserQuizzes(true);
-        setFetchError(null); // Clear previous errors
+        setFetchError(null);
         let fetchedQuizzes: QuizData[] = [];
+        
         try {
             const response = await axios.get<QuizData[]>(`${API_BASE_URL}/api/quizzes?scope=my`, { withCredentials: true });
             fetchedQuizzes = response.data || [];
-            setUserQuizzes(fetchedQuizzes); // Update state
+            setUserQuizzes(fetchedQuizzes);
             console.log(`(CB) Fetched ${fetchedQuizzes.length} quizzes for user ${loggedInUser.id}.`);
         } catch (err) {
-            console.error("(CB) Error fetching user quizzes:", err);
-             if (axios.isAxiosError(err)) {
-                 if (err.response?.status === 401) { // Handle unauthorized specifically
-                    setFetchError("Authentication session invalid. Please log in again.");
-                    googleLogout(); setCurrentUser(null); setUserQuizzes([]); setGuestQuizzes([]); // Clear all user/guest data
-                 } else { // Other Axios errors
-                    let msg = `Failed to load your quizzes (Status: ${err.response?.status}): ${err.response?.data?.error || err.message}`;
-                    setFetchError(msg); setUserQuizzes([]); // Clear potentially stale data
-                 }
-             } else if (err instanceof Error) { // Generic JS errors
-                 setFetchError(`Failed to load your quizzes: ${err.message}`); setUserQuizzes([]);
-             } else { // Unknown errors
-                setFetchError("Unknown error fetching user quizzes."); setUserQuizzes([]);
-             }
+            const error = handleApiError(err, "Unknown error fetching user quizzes");
+            console.error("(CB) Error fetching user quizzes:", error);
+            
+            if (error.status === 401) {
+                setFetchError("Authentication session invalid. Please log in again.");
+                googleLogout();
+                setCurrentUser(null);
+                setUserQuizzes([]);
+                setGuestQuizzes([]);
+            } else {
+                setFetchError(`Failed to load your quizzes: ${error.message}`);
+                setUserQuizzes([]);
+            }
         } finally {
             setLoadingUserQuizzes(false);
-            // Auto-select the first fetched user quiz *only* if no quiz is currently selected
-            // Use Ref to check currentQuizId state AFTER fetch completes
             if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0) {
-                 console.log("(CB) Auto-selecting first user quiz post-fetch:", fetchedQuizzes[0].id);
-                 handleSelectQuiz(fetchedQuizzes[0].id); // Call stable select handler
+                console.log("(CB) Auto-selecting first user quiz post-fetch:", fetchedQuizzes[0].id);
+                handleSelectQuiz(fetchedQuizzes[0].id);
             }
         }
-    }, [handleSelectQuiz]); // Depends only on stable handleSelectQuiz
+        return fetchedQuizzes;
+    }, [handleSelectQuiz]);
 
     const fetchPublicQuizzes = useCallback(async () => {
-        // Fetches quizzes with userId: null from the database
         console.log("(CB) Fetching public quizzes...");
         setLoadingPublicQuizzes(true);
-        setFetchError(null); // Clear previous errors
+        setFetchError(null);
         let fetchedQuizzes: QuizData[] = [];
+        
         try {
             const response = await axios.get<QuizData[]>(`${API_BASE_URL}/api/quizzes?scope=public`);
             fetchedQuizzes = response.data || [];
-            setPublicQuizzes(fetchedQuizzes); // Update state
+            setPublicQuizzes(fetchedQuizzes);
             console.log(`(CB) Fetched ${fetchedQuizzes.length} public quizzes.`);
         } catch (err) {
-             console.error("(CB) Error fetching public quizzes:", err);
-             let msg = "Failed to load public quizzes.";
-             if (axios.isAxiosError(err)) { msg = `Error ${err.response?.status}: ${err.response?.data?.error || err.message}`; }
-             else if (err instanceof Error) { msg = err.message; }
-             else { msg = "Unknown error fetching public quizzes."; }
-             setFetchError(msg); setPublicQuizzes([]); // Clear potentially stale data
+            const error = handleApiError(err, "Unknown error fetching public quizzes");
+            console.error("(CB) Error fetching public quizzes:", error);
+            setFetchError(`Failed to load public quizzes: ${error.message}`);
+            setPublicQuizzes([]);
         } finally {
             setLoadingPublicQuizzes(false);
-             // Auto-select the first fetched public quiz *only* if no quiz is currently selected
-             // AND the user is either not logged in OR has no quizzes of their own loaded yet.
-             // Use Ref to check current state AFTER fetch completes
-             if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0 && (!stateRef.current.currentUser || stateRef.current.userQuizzes.length === 0)) {
-                 console.log("(CB) Auto-selecting first public quiz post-fetch:", fetchedQuizzes[0].id);
-                 handleSelectQuiz(fetchedQuizzes[0].id); // Call stable select handler
-             }
+            if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0 && 
+                (!stateRef.current.currentUser || stateRef.current.userQuizzes.length === 0)) {
+                console.log("(CB) Auto-selecting first public quiz post-fetch:", fetchedQuizzes[0].id);
+                handleSelectQuiz(fetchedQuizzes[0].id);
+            }
         }
-    }, [handleSelectQuiz]); // Depends only on stable handleSelectQuiz
+        return fetchedQuizzes;
+    }, [handleSelectQuiz]);
 
 
     // --- Authentication Callbacks ---
@@ -293,45 +308,40 @@ function App() {
         setCurrentlyDisplayedQuestion(question);
     }, []); // No external dependencies
 
-    const handleQuizCreated = useCallback((createdQuiz: QuizData | null) => {
-        // Callback triggered by QuizCreator after attempting generation
+    const handleQuizCreated = useCallback(async (createdQuiz: QuizData | null) => {
         console.log("(CB) Quiz created callback received", createdQuiz);
-        setFetchError(null); // Clear previous fetch errors
-        if (createdQuiz) {
-             // Use Ref to check currentUser state at the moment this runs
-             const currentUserFromRef = stateRef.current.currentUser;
-             // Check if userId exists AND matches current user (means it was saved to DB by backend)
-             if (createdQuiz.userId && currentUserFromRef && createdQuiz.userId === currentUserFromRef.id) {
-                 console.log("(CB) Created quiz is USER'S (from DB), refetching user quizzes...");
-                 // Fetch user quizzes and then select the new one
-                 fetchUserQuizzes(currentUserFromRef).then(() => {
-                     handleSelectQuiz(createdQuiz.id); // Select after fetch completes
-                 });
-             }
-             // Check if userId is explicitly null (means it's a temporary GUEST quiz from backend)
-             else if (createdQuiz.userId === null) {
-                  console.log("(CB) Created quiz is for GUEST (temporary), adding to guest state.");
-                  // Add the temporary quiz to the frontend-only guest list
-                  setGuestQuizzes(prev => [...prev, createdQuiz]);
-                  // Select the newly created guest quiz
-                  handleSelectQuiz(createdQuiz.id);
-             } else {
-                  // This case ideally shouldn't happen if backend logic is correct
-                  console.warn("(CB) Created quiz has unexpected userId, treating as public and refetching.");
-                  fetchPublicQuizzes().then(() => {
-                      handleSelectQuiz(createdQuiz.id); // Try selecting it anyway
-                  });
-             }
-        } else {
-            // If createdQuiz is null, it means creation failed (e.g., AI error, DB error)
+        setFetchError(null);
+        
+        if (!createdQuiz) {
             console.log("(CB) Quiz creation failed (callback received null).");
-            // Optionally set an error message or refetch lists if appropriate
             setFetchError("Failed to create the quiz.");
+            return;
         }
-    // Depends on the stable fetch/select callbacks
+
+        const currentUserFromRef = stateRef.current.currentUser;
+        
+        try {
+            if (createdQuiz.userId && currentUserFromRef && createdQuiz.userId === currentUserFromRef.id) {
+                console.log("(CB) Created quiz is USER'S (from DB), refetching user quizzes...");
+                await fetchUserQuizzes(currentUserFromRef);
+                handleSelectQuiz(createdQuiz.id);
+            } else if (createdQuiz.userId === null) {
+                console.log("(CB) Created quiz is for GUEST (temporary), adding to guest state.");
+                setGuestQuizzes(prev => [...prev, createdQuiz]);
+                handleSelectQuiz(createdQuiz.id);
+            } else {
+                console.warn("(CB) Created quiz has unexpected userId, treating as public and refetching.");
+                await fetchPublicQuizzes();
+                handleSelectQuiz(createdQuiz.id);
+            }
+        } catch (err) {
+            const error = handleApiError(err, "Failed to process created quiz");
+            console.error("(CB) Error processing created quiz:", error);
+            setFetchError(error.message);
+        }
     }, [fetchUserQuizzes, fetchPublicQuizzes, handleSelectQuiz]);
 
-    const handleQuizUpdated = useCallback(() => {
+    const handleQuizUpdated = useCallback(async () => {
         // Callback triggered by QuizEditor after successful save
         console.log("(CB) Quiz updated callback received (User quiz assumed)");
         setFetchError(null); // Clear errors
@@ -341,23 +351,25 @@ function App() {
             console.error("Quiz updated triggered but no user found in stateRef!");
             return; // Should not happen
         }
-        // Refetch user quizzes and public quizzes (in case visibility changed, though unlikely)
-        Promise.all([fetchPublicQuizzes(), fetchUserQuizzes(currentUserFromRef)])
-            .then(() => {
-                 // After fetches complete, try to re-select the quiz that was being edited
-                 const currentQuizIdFromRef = stateRef.current.currentQuizId; // Get ID from Ref
-                 if(currentQuizIdFromRef) {
-                    console.log(`(CB) Attempting to reselect quiz ${currentQuizIdFromRef} after update.`);
-                    // Check if the quiz still exists in the *latest* state fetched lists
-                    const allQuizzes = [...stateRef.current.publicQuizzes, ...stateRef.current.userQuizzes];
-                    if (allQuizzes.some(q => q.id === currentQuizIdFromRef)) {
-                         handleSelectQuiz(currentQuizIdFromRef); // Re-select if still exists
-                    } else {
-                         console.log(`(CB) Quiz ${currentQuizIdFromRef} no longer found after update, selecting null.`);
-                         handleSelectQuiz(null); // Deselect if it somehow disappeared
-                    }
-                 }
-             });
+        // Refetch quizzes to get the latest data
+        const [refetchedPublicQuizzes, refetchedUserQuizzes] = await Promise.all([
+            fetchPublicQuizzes(),
+            fetchUserQuizzes(currentUserFromRef)
+        ]);
+
+        // After fetches complete, try to re-select the quiz that was being edited
+        const currentQuizIdFromRef = stateRef.current.currentQuizId; // Get ID from Ref
+        if(currentQuizIdFromRef) {
+           console.log(`(CB) Attempting to reselect quiz ${currentQuizIdFromRef} after update.`);
+           // Check if the quiz still exists in the *latest* fetched lists
+           const allQuizzes = [...refetchedPublicQuizzes, ...refetchedUserQuizzes];
+           if (allQuizzes.some(q => q.id === currentQuizIdFromRef)) {
+                handleSelectQuiz(currentQuizIdFromRef); // Re-select if still exists
+           } else {
+                console.log(`(CB) Quiz ${currentQuizIdFromRef} no longer found after update, selecting null.`);
+                handleSelectQuiz(null); // Deselect if it somehow disappeared
+           }
+        }
     }, [fetchUserQuizzes, fetchPublicQuizzes, handleSelectQuiz]); // Depends on stable callbacks
 
     const handleDeleteQuizRequest = useCallback((id: string, title: string) => {
@@ -368,47 +380,39 @@ function App() {
     }, []); // No external dependencies
 
     const confirmDeleteQuiz = useCallback(async () => {
-        // Handles the actual deletion after confirmation
-        // Use Ref to get currentUser - only logged-in users can delete their own quizzes
         const currentUserFromRef = stateRef.current.currentUser;
         if (!quizToDelete || !currentUserFromRef) {
-             console.error("Delete confirmation attempted without quiz selected or user logged in.");
-             setDeleteError("Cannot delete quiz: User not logged in or quiz not specified.");
-             return;
-         }
-         const userToDeleteFor = currentUserFromRef; // Capture user for async calls
-         const quizInfoToDelete = quizToDelete; // Capture quiz info to delete
-         setIsDeleting(true); setDeleteError(null); setFetchError(null); // Set loading/clear errors
-         try {
-             console.log(`(CB) Deleting user quiz ${quizInfoToDelete.id}`);
-             await axios.delete(`${API_BASE_URL}/api/quizzes/${quizInfoToDelete.id}`, { withCredentials: true }); // API call
-             setShowDeleteConfirm(false); // Close modal on success
-             setQuizToDelete(null); // Clear quiz-to-delete state
+            console.error("Delete confirmation attempted without quiz selected or user logged in.");
+            setDeleteError("Cannot delete quiz: User not logged in or quiz not specified.");
+            return;
+        }
 
-             // Refetch user quizzes to update the list AFTER successful deletion
-             await fetchUserQuizzes(userToDeleteFor);
+        setIsDeleting(true);
+        setDeleteError(null);
+        setFetchError(null);
 
-             // Determine the next quiz to select AFTER user quizzes have been refetched
-             // Use Ref again to access the absolute latest state after the await
-             // Note: Direct state access might be slightly delayed, functional update is safer if needed
-             const remainingUserQuizzes = stateRef.current.userQuizzes; // Already filtered by the new fetch implicitly if successful
-             const nextUserQuiz = remainingUserQuizzes.length > 0 ? remainingUserQuizzes[0] : null;
-             const nextPublicQuiz = stateRef.current.publicQuizzes.length > 0 ? stateRef.current.publicQuizzes[0] : null;
-             const nextId = nextUserQuiz?.id ?? nextPublicQuiz?.id ?? null; // Prefer user, then public
-             console.log(`(CB) Deleted ${quizInfoToDelete.id}, selecting next: ${nextId}`);
-             handleSelectQuiz(nextId); // Select the next available quiz (or null)
+        try {
+            console.log(`(CB) Deleting user quiz ${quizToDelete.id}`);
+            await axios.delete(`${API_BASE_URL}/api/quizzes/${quizToDelete.id}`, { withCredentials: true });
+            
+            setShowDeleteConfirm(false);
+            setQuizToDelete(null);
 
-         } catch (err) {
-             console.error("(CB) Error deleting quiz:", err);
-             let msg = 'Failed to delete quiz.';
-             if (axios.isAxiosError(err)) { msg = err.response?.data?.error || `Server Error (${err.response?.status})`; }
-             else if (err instanceof Error) { msg = err.message; }
-             setDeleteError(msg); // Show error within the modal
-             setFetchError(msg); // Optionally show a general fetch error too
-         } finally {
-             setIsDeleting(false); // Stop delete button spinner
-         }
-    // Depends on quizToDelete state, and stable fetch/select callbacks
+            const remainingUserQuizzes = await fetchUserQuizzes(currentUserFromRef);
+            const nextUserQuiz = remainingUserQuizzes[0] ?? null;
+            const nextPublicQuiz = stateRef.current.publicQuizzes[0] ?? null;
+            const nextId = nextUserQuiz?.id ?? nextPublicQuiz?.id ?? null;
+            
+            console.log(`(CB) Deleted ${quizToDelete.id}, selecting next: ${nextId}`);
+            handleSelectQuiz(nextId);
+        } catch (err) {
+            const error = handleApiError(err, "Failed to delete quiz");
+            console.error("(CB) Error deleting quiz:", error);
+            setDeleteError(error.message);
+            setFetchError(error.message);
+        } finally {
+            setIsDeleting(false);
+        }
     }, [quizToDelete, fetchUserQuizzes, handleSelectQuiz]);
 
     const cancelDeleteQuiz = useCallback(() => {
