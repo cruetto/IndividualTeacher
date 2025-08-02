@@ -6,7 +6,9 @@ import { Container, Form, Button, ListGroup, Card, InputGroup, Spinner, Alert, R
 import { QuizData, Question, AnswerOption } from '../interfaces/interfaces'; // Adjust path
 import { v4 as uuidv4 } from 'uuid'; // For generating new IDs
 
-const API_BASE_URL = 'http://localhost:5001';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string; // Backend URL
+
 
 interface Props {
     onQuizUpdated: () => void;

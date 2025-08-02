@@ -15,7 +15,8 @@ frontend:
     npm run dev
 
 backend:
-    source .venv/bin/activate
+    Linux: source .venv/bin/activate
+    Windows 10: .venv\Scripts\Activate.ps1
     python backend/app.py
 
 
@@ -27,5 +28,6 @@ frontend:
 backend:
     cd backend
     python3 -m venv .venv
-    source .venv/bin/activate
+    Linux: source .venv/bin/activate
+    Windows 10: .venv\Scripts\Activate.ps1
     pip install -r requirements.txt

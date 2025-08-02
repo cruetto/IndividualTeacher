@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { QuizData } from '../interfaces/interfaces'; // Adjust path if needed
 
-const API_BASE_URL = 'http://localhost:5001'; // Ensure this matches backend
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string; // Backend URL
 
 interface Props {
   // Expects the new quiz data, or null if creation failed unexpectedly before getting data

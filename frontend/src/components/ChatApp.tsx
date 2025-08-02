@@ -4,7 +4,8 @@ import { Button, Offcanvas, Form, InputGroup, Spinner } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001'; // Backend URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string; // Backend URL
+
 
 interface ChatMessage {
   sender: "user" | "assistant";
