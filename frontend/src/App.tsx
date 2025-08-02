@@ -156,10 +156,10 @@ function App() {
             }
         } finally {
             setLoadingUserQuizzes(false);
-            if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0) {
-                console.log("(CB) Auto-selecting first user quiz post-fetch:", fetchedQuizzes[0].id);
-                handleSelectQuiz(fetchedQuizzes[0].id);
-            }
+            // if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0) {
+            //     console.log("(CB) Auto-selecting first user quiz post-fetch:", fetchedQuizzes[0].id);
+            //     handleSelectQuiz(fetchedQuizzes[0].id);
+            // }
         }
         return fetchedQuizzes;
     }, [handleSelectQuiz]);
@@ -182,11 +182,11 @@ function App() {
             setPublicQuizzes([]);
         } finally {
             setLoadingPublicQuizzes(false);
-            if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0 && 
-                (!stateRef.current.currentUser || stateRef.current.userQuizzes.length === 0)) {
-                console.log("(CB) Auto-selecting first public quiz post-fetch:", fetchedQuizzes[0].id);
-                handleSelectQuiz(fetchedQuizzes[0].id);
-            }
+            // if (!stateRef.current.currentQuizId && fetchedQuizzes.length > 0 && 
+            //     (!stateRef.current.currentUser || stateRef.current.userQuizzes.length === 0)) {
+            //     console.log("(CB) Auto-selecting first public quiz post-fetch:", fetchedQuizzes[0].id);
+            //     handleSelectQuiz(fetchedQuizzes[0].id);
+            // }
         }
         return fetchedQuizzes;
     }, [handleSelectQuiz]);
@@ -509,6 +509,20 @@ function App() {
 
     // Get the answers for the current quiz
     const currentQuizAnswers = useMemo(() => currentQuizData ? allUserAnswers[currentQuizData.id] : undefined, [currentQuizData, allUserAnswers]);
+
+    useEffect(() => {
+    // Only auto-select if nothing is selected yet
+    if (!currentQuizId) {
+        if (userQuizzes.length > 0) {
+            handleSelectQuiz(userQuizzes[0].id);
+        } else if (publicQuizzes.length > 0) {
+            handleSelectQuiz(publicQuizzes[0].id);
+        } else if (guestQuizzes.length > 0) {
+            handleSelectQuiz(guestQuizzes[0].id);
+        }
+    }
+    // Only run when quiz lists or selection changes
+}, [userQuizzes, publicQuizzes, guestQuizzes, currentQuizId, handleSelectQuiz]);
 
     // Prepare context for the ChatApp
     const chatContext: ChatContext = useMemo(() => {

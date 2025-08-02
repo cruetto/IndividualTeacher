@@ -25,7 +25,7 @@ app = Flask(__name__) # Create Flask app instance FIRST
 
 # --- Secret Key Setup ---
 # Use environment variable or a default (change the default for production!)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a-very-insecure-default-key-for-dev-only-CHANGE-ME')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 
 # --- Session Cookie Configuration ---
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'   # Good for dev over HTTP localhost:port -> localhost:port
