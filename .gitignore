@@ -7,16 +7,17 @@ frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 frontend/lerna-debug.log*
 
-frontend/node_modules
-frontend/dist
-frontend/dist-ssr
+# Node modules and build output
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
 frontend/*.local
 
-
 # Editor directories and files
-frontend/.vscode/*
-frontend/!.vscode/extensions.json
-frontend/.idea
+frontend/.vscode/
+!frontend/.vscode/extensions.json
+frontend/.idea/
 frontend/.DS_Store
 frontend/*.suo
 frontend/*.ntvs*
@@ -24,9 +25,20 @@ frontend/*.njsproj
 frontend/*.sln
 frontend/*.sw?
 
+# Frontend environment file
 frontend/.env
 
-
+# Root-level environment file
+backend/.env
 
 # Backend (Python)
-backend/.env
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+
+# OS files (root and everywhere)
+.DS_Store
+Thumbs.db
+
+# General logs
+*.log
