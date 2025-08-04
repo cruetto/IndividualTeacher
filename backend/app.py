@@ -53,31 +53,41 @@ CORS(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"] # Added Origin/Accept
 )
 
+# ... after app = Flask(__name__)
 
+# --- LAZY-LOADING CLIENTS ---
+_gemini_client = None
+
+def get_gemini_client():
+    """
+    Initializes and returns a single instance of the Gemini client.
+    This prevents initialization in the Gunicorn master process.
+    """
+    global _gemini_client
+    if _gemini_client is None:
+        print("--- Initializing Google Gemini client for the first time in this worker ---")
+        try:
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            if not google_api_key:
+                print("WARNING: GOOGLE_API_KEY is not set.")
+                return None
+            
+            genai.configure(api_key=google_api_key)
+            gemini_generation_config_json = genai.types.GenerationConfig(
+                response_mime_type="application/json"
+            )
+            # Store the config in the function or app context if needed elsewhere
+            _gemini_client = genai.GenerativeModel("gemini-1.5-flash")
+            print("--- Google Gemini client initialized successfully. ---")
+        except Exception as e:
+            print(f"FATAL: Error initializing Google Gemini client: {e}")
+            return None
+    return _gemini_client
+
+# ... rest of your code (JSON encoder, DB connection, etc.)
 import flask_cors # Try importing again to confirm availability in this scope
 print(f"--- FLASK BACKEND: Flask-CORS imported successfully. Version: {flask_cors.__version__} ---")
 print("--- FLASK BACKEND: GLOBAL Flask-CORS initialized. ---")
-
-
-
-
-
-
-@app.after_request
-def add_cors_headers(response):
-    # IMPORTANT: Be careful with wildcard '*' if using credentials
-    # Use specific origin for production and when supports_credentials=True
-    frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
-    response.headers.add('Access-Control-Allow-Origin', frontend_origin)
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    # print(f"DEBUG: Added manual CORS headers for origin: {frontend_origin}") # Optional: uncomment for debugging
-    return response
-# --- End Manual CORS Header Decorator ---
-
-
-
 
 
 
@@ -94,8 +104,8 @@ try:
         gemini_generation_config_json = genai.types.GenerationConfig(
             response_mime_type="application/json"
         )
-        gemini_model = genai.GenerativeModel("gemini-1.5-flash") # Or your preferred model
-        print("Google Gemini client initialized ('gemini-1.5-flash').")
+        # gemini_model = genai.GenerativeModel("gemini-1.5-flash") # Or your preferred model
+        # print("Google Gemini client initialized ('gemini-1.5-flash').")
 except Exception as e:
      print(f"Error initializing Google Gemini client: {e}")
 
@@ -593,6 +603,7 @@ def generate_quiz():
     is_guest = user_db_id is None
     print(f"POST /api/quizzes/generate request received. UserID: {user_db_id} (Guest: {is_guest})")
 
+    gemini_model = get_gemini_client()
     if not gemini_model:
         return jsonify({"error": "AI service is not configured."}), 503
 
@@ -710,6 +721,7 @@ def generate_quiz():
 def handle_chat():
     """Handles chat messages, providing context to the AI."""
     print("POST /api/chat request received")
+    gemini_model = get_gemini_client()
     if not gemini_model:
         return jsonify({"error": "AI chat service is not configured."}), 503
 
