@@ -308,38 +308,44 @@ function App() {
         setCurrentlyDisplayedQuestion(question);
     }, []); // No external dependencies
 
+    const [pendingSelectQuizId, setPendingSelectQuizId] = useState<string | null>(null);
     const handleQuizCreated = useCallback(async (createdQuiz: QuizData | null) => {
-        console.log("(CB) Quiz created callback received", createdQuiz);
-        setFetchError(null);
-        
-        if (!createdQuiz) {
-            console.log("(CB) Quiz creation failed (callback received null).");
-            setFetchError("Failed to create the quiz.");
-            return;
-        }
+    console.log("(CB) Quiz created callback received", createdQuiz);
+    setFetchError(null);
 
-        const currentUserFromRef = stateRef.current.currentUser;
-        
-        try {
-            if (createdQuiz.userId && currentUserFromRef && createdQuiz.userId === currentUserFromRef.id) {
-                console.log("(CB) Created quiz is USER'S (from DB), refetching user quizzes...");
-                await fetchUserQuizzes(currentUserFromRef);
-                handleSelectQuiz(createdQuiz.id);
-            } else if (createdQuiz.userId === null) {
-                console.log("(CB) Created quiz is for GUEST (temporary), adding to guest state.");
-                setGuestQuizzes(prev => [...prev, createdQuiz]);
-                handleSelectQuiz(createdQuiz.id);
-            } else {
-                console.warn("(CB) Created quiz has unexpected userId, treating as public and refetching.");
-                await fetchPublicQuizzes();
-                handleSelectQuiz(createdQuiz.id);
-            }
-        } catch (err) {
-            const error = handleApiError(err, "Failed to process created quiz");
-            console.error("(CB) Error processing created quiz:", error);
-            setFetchError(error.message);
+    if (!createdQuiz) {
+        console.log("(CB) Quiz creation failed (callback received null).");
+        setFetchError("Failed to create the quiz.");
+        return;
+    }
+
+    const currentUserFromRef = stateRef.current.currentUser;
+
+    try {
+        if (createdQuiz.userId && currentUserFromRef && createdQuiz.userId === currentUserFromRef.id) {
+            console.log("(CB) Created quiz is USER'S (from DB), refetching user quizzes...");
+            await fetchUserQuizzes(currentUserFromRef);
+            // Wait for userQuizzes to update, then select
+            setPendingSelectQuizId(createdQuiz.id);
+        } else if (createdQuiz.userId === null) {
+            console.log("(CB) Created quiz is for GUEST (temporary), adding to guest state.");
+            setGuestQuizzes(prev => {
+                const updated = [...prev, createdQuiz];
+                // Wait for state update, then select
+                setTimeout(() => handleSelectQuiz(createdQuiz.id), 0);
+                return updated;
+            });
+        } else {
+            console.warn("(CB) Created quiz has unexpected userId, treating as public and refetching.");
+            await fetchPublicQuizzes();
+            setTimeout(() => handleSelectQuiz(createdQuiz.id), 0);
         }
-    }, [fetchUserQuizzes, fetchPublicQuizzes, handleSelectQuiz]);
+    } catch (err) {
+        const error = handleApiError(err, "Failed to process created quiz");
+        console.error("(CB) Error processing created quiz:", error);
+        setFetchError(error.message);
+    }
+}, [fetchUserQuizzes, fetchPublicQuizzes, handleSelectQuiz]);
 
     const handleQuizUpdated = useCallback(async () => {
         // Callback triggered by QuizEditor after successful save
@@ -422,6 +428,20 @@ function App() {
         setDeleteError(null);
     }, []); // No external dependencies
 
+    useEffect(() => {
+        if (pendingSelectQuizId) {
+            // Check if the quiz is now present in any list
+            const foundQuiz =
+                guestQuizzes.find(q => q.id === pendingSelectQuizId) ||
+                userQuizzes.find(q => q.id === pendingSelectQuizId) ||
+                publicQuizzes.find(q => q.id === pendingSelectQuizId);
+
+            if (foundQuiz) {
+                handleSelectQuiz(pendingSelectQuizId);
+                setPendingSelectQuizId(null); // Clear pending selection
+            }
+        }
+    }, [pendingSelectQuizId, guestQuizzes, userQuizzes, publicQuizzes, handleSelectQuiz]);
 
     // --- Single Initial Data Loading Effect ---
     useEffect(() => {

@@ -19,18 +19,26 @@ from google.auth.transport import requests as google_requests
 # Assuming database.py is in the same directory or accessible via Python path
 from database import connect_to_db, get_db
 
-load_dotenv() # Load environment variables from .env file
-
-app = Flask(__name__) # Create Flask app instance FIRST
-
-# --- Secret Key Setup ---
-# Use environment variable or a default (change the default for production!)
+load_dotenv()
+app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 
-# --- Session Cookie Configuration ---
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'   # Good for dev over HTTP localhost:port -> localhost:port
-app.config['SESSION_COOKIE_SECURE'] = False    # MUST be False if backend runs on HTTP
-app.config['SESSION_COOKIE_HTTPONLY'] = True   # Prevent JS access to session cookie
+# --- DYNAMIC SESSION COOKIE CONFIGURATION ---
+# Check if we are in a production environment (like Render)
+IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
+
+if IS_PRODUCTION:
+    print("--- RUNNING IN PRODUCTION MODE ---")
+    # For HTTPS cross-site cookies, SameSite must be 'None' and Secure must be True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+    app.config['SESSION_COOKIE_SECURE'] = True
+else:
+    print("--- RUNNING IN DEVELOPMENT MODE ---")
+    # Standard settings for localhost development
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = False
+
+app.config['SESSION_COOKIE_HTTPONLY'] = True # This is good for both
 
 # --- Initialize Flask-CORS AFTER app creation - SIMPLIFIED GLOBAL SETUP ---
 frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173") # Read from .env or default
