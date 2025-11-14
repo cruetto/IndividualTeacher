@@ -66,7 +66,7 @@ def get_gemini_client():
             gemini_generation_config_json = genai.types.GenerationConfig(
                 response_mime_type="application/json"
             )
-            _gemini_client = genai.GenerativeModel("google/gemini-2.5-flash")
+            _gemini_client = genai.GenerativeModel("gemini-2.5-flash")
             
             print("--- Google Gemini client initialized successfully. ---")
         except Exception as e:
