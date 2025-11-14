@@ -8,7 +8,7 @@ import sys
 from functools import wraps
 
 from flask import Flask, jsonify, request, session, make_response
-from flask_cors import CORS 
+import flask_cors 
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from bson import ObjectId
 from dotenv import load_dotenv
