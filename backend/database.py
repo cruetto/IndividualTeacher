@@ -10,14 +10,13 @@ load_dotenv()  # Load variables from .env file into environment
 
 # Get the connection string from environment variables
 MONGODB_URI = os.environ.get("MONGODB_URI")
-DB_NAME = "Quizzes" # Choose a name for your database (e.g., quiz_app, my_data)
+DB_NAME = "Quizzes"
 
 # --- Check Configuration ---
 if not MONGODB_URI:
     raise ValueError("MONGODB_URI environment variable not set. Please check your .env file.")
 
 # --- Global variable to hold the database connection ---
-# We initialize it once and reuse it
 _db = None
 
 # --- Connection Function ---
@@ -48,8 +47,7 @@ def connect_to_db():
 
     except Exception as e:
         print(f"ERROR: Could not connect to MongoDB Atlas: {e}")
-        # Depending on your app, you might want to exit or handle this differently
-        raise # Re-raise the exception to halt execution if connection fails
+        raise 
 
 # --- Accessor Function ---
 def get_db():
@@ -58,7 +56,6 @@ def get_db():
     """
     if _db is None:
         # Attempt to connect if called before explicit connection
-        # Note: It's generally better to call connect_to_db() explicitly at app startup
         print("Database not connected. Attempting connection...")
         connect_to_db()
 
