@@ -48,7 +48,7 @@ def connect_to_db():
 
 def add_video_embeddings(video_id, video_title, chunks):
     """Store video chunks with embeddings into MongoDB"""
-    if not video_chunks:
+    if video_chunks is None:
         connect_to_db()
     
     # Delete existing chunks for this video first
@@ -61,7 +61,7 @@ def add_video_embeddings(video_id, video_title, chunks):
 
 def find_similar_videos(embedding, limit=5):
     """Find similar video chunks using vector search"""
-    if not video_chunks:
+    if video_chunks is None:
         connect_to_db()
     
     results = video_chunks.aggregate([
@@ -86,6 +86,6 @@ def find_similar_videos(embedding, limit=5):
     return list(results)
 
 def get_video_count():
-    if not video_chunks:
+    if video_chunks is None:
         connect_to_db()
     return video_chunks.distinct("video_id")
