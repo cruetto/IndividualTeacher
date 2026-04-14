@@ -14,6 +14,8 @@ import QuizManager from './components/QuizManager';
 import QuizCreator from './components/QuizCreator';
 import QuizEditor from './components/QuizEditor';
 import { QuizData, Question, DisplayQuestion, AllUserAnswers, User, ChatContext } from './interfaces/interfaces';
+import { RecommendationsResponse, QuestionRecommendations } from './interfaces/recommendations';
+import VideoRecommendations from './components/VideoRecommendations';
 
 // --- Config ---
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
@@ -62,6 +64,11 @@ function App() {
     const [quizFinished, setQuizFinished] = useState<boolean>(false);        // Flag for review mode
     const [currentScore, setCurrentScore] = useState<number>(0);             // Score after finishing
     const [currentlyDisplayedQuestion, setCurrentlyDisplayedQuestion] = useState<DisplayQuestion | null>(null); // Info passed up from Quiz for Chat
+    
+    // --- Recommendations State ---
+    const [recommendations, setRecommendations] = useState<RecommendationsResponse>({});
+    const [loadingRecommendations, setLoadingRecommendations] = useState<boolean>(false);
+    const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
 
     // --- Delete Modal State ---
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Controls modal visibility
@@ -86,6 +93,8 @@ function App() {
         setQuizFinished(false);
         setCurrentScore(0);
         setCurrentlyDisplayedQuestion(null);
+        setRecommendations({});
+        setRecommendationsError(null);
     }, []); // No external dependencies needed
 
     const initializeAnswersForQuiz = useCallback((quizId: string, questions: Question[]) => {
@@ -530,6 +539,56 @@ function App() {
     // Get the answers for the current quiz
     const currentQuizAnswers = useMemo(() => currentQuizData ? allUserAnswers[currentQuizData.id] : undefined, [currentQuizData, allUserAnswers]);
 
+    // --- Video Recommendations Function ---
+    const fetchRecommendations = useCallback(async () => {
+        if (!currentQuizData || !currentQuizAnswers) return;
+        
+        setLoadingRecommendations(true);
+        setRecommendationsError(null);
+        
+        try {
+            // Collect all incorrect questions
+            const incorrectQuestions = currentQuizData.questions.filter((question, originalIndex) => {
+                const userAnswerIndex = currentQuizAnswers[originalIndex];
+                const correctAnswerIndex = question.answers.findIndex(a => a.is_correct);
+                return userAnswerIndex !== correctAnswerIndex;
+            }).map(question => ({
+                id: question.id,
+                question_text: question.question_text,
+                topic: currentQuizData.topic
+            }));
+
+            if (incorrectQuestions.length === 0) {
+                console.log("No incorrect questions, skipping recommendations");
+                setRecommendations({});
+                return;
+            }
+
+            console.log(`Fetching recommendations for ${incorrectQuestions.length} incorrect questions`);
+
+            const response = await axios.post(`${API_BASE_URL}/api/recommendations`, {
+                incorrect_questions: incorrectQuestions
+            });
+
+            setRecommendations(response.data);
+            console.log("Received recommendations:", Object.keys(response.data).length);
+
+        } catch (err) {
+            const error = handleApiError(err, "Failed to load video recommendations");
+            console.error("Recommendations error:", error);
+            setRecommendationsError(error.message);
+        } finally {
+            setLoadingRecommendations(false);
+        }
+    }, [currentQuizData, currentQuizAnswers]);
+
+    // --- Effect: Load recommendations when quiz finishes ---
+    useEffect(() => {
+        if (quizFinished) {
+            fetchRecommendations();
+        }
+    }, [quizFinished, fetchRecommendations]);
+
     useEffect(() => {
     // Only auto-select if nothing is selected yet
     if (!currentQuizId) {
@@ -651,6 +710,20 @@ function App() {
                                  currentQuizData && currentQuizAnswers ? (
                                      <>
                                           <h1 style={{ textAlign: 'center', marginBottom: '2rem' }}>{currentQuizData.title}</h1>
+
+                                          {quizFinished && (
+                                              <div className="alert alert-info text-center" style={{ 
+                                                  position: 'fixed', 
+                                                  top: '1rem', 
+                                                  right: '1rem', 
+                                                  minWidth: '200px',
+                                                  zIndex: 100,
+                                                  padding: '0.75rem 1rem'
+                                              }}>
+                                                  <strong>Score: {currentScore} / {currentQuizData.questions.length}</strong>
+                                              </div>
+                                          )}
+
                                           <Quiz
                                               key={`${currentQuizData.id}-${shuffleQuestions}-${shuffleAnswers}`} // Use composite key
                                               quizId={currentQuizData.id}
@@ -667,6 +740,9 @@ function App() {
                                               setCurrentDisplayIndex={setCurrentDisplayIndex}
                                               setScore={setCurrentScore}
                                               onDisplayedQuestionChange={handleDisplayedQuestionUpdate}
+                                              recommendations={currentlyDisplayedQuestion ? recommendations[currentlyDisplayedQuestion.id] : undefined}
+                                              loadingRecommendations={loadingRecommendations}
+                                              recommendationsError={recommendationsError}
                                           />
                                      </>
                                  ) : // 2. If NO quiz data, are the lists currently loading? If YES, show spinner.

@@ -88,3 +88,9 @@ def get_video_count():
     if video_chunks is None:
         connect_to_db()
     return video_chunks.distinct("video_id")
+
+def get_db():
+    global db
+    if db is None:
+        connect_to_db()
+    return db

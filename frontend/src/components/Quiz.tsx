@@ -1,8 +1,10 @@
 // frontend/src/components/Quiz.tsx
 import { useState, useEffect, useMemo, useCallback } from "react";
 // Import Dropdown from react-bootstrap
-import { Button, Dropdown } from "react-bootstrap";
+import { Button, Dropdown, Spinner, Alert } from "react-bootstrap";
 import { Question, AnswerOption } from "../interfaces/interfaces"; // Adjust path if needed
+import { QuestionRecommendations } from '../interfaces/recommendations';
+import VideoRecommendations from './VideoRecommendations';
 
 // --- Shuffle Function ---
 function shuffleArray<T>(array: T[]): T[] {
@@ -25,24 +27,29 @@ interface DisplayQuestion extends Omit<Question, 'answers'> { // Exclude origina
 }
 
 interface Props {
-  quizId: string;
-  questions: Question[]; // Original, unshuffled questions
-  userAnswers: number[]; // Stores the ORIGINAL index of the selected answer for each ORIGINAL question index
-  onAnswerUpdate: (quizId: string, originalQuestionIndex: number, originalAnswerIndex: number) => void; // Use original indices
-  shuffleQuestions: boolean;
-  shuffleAnswers: boolean;
-  onResetQuiz: (quizId: string) => void; // Callback to reset answers AND state in App
+    quizId: string;
+    questions: Question[]; // Original, unshuffled questions
+    userAnswers: number[]; // Stores the ORIGINAL index of the selected answer for each ORIGINAL question index
+    onAnswerUpdate: (quizId: string, originalQuestionIndex: number, originalAnswerIndex: number) => void; // Use original indices
+    shuffleQuestions: boolean;
+    shuffleAnswers: boolean;
+    onResetQuiz: (quizId: string) => void; // Callback to reset answers AND state in App
 
-  // --- State and Setters Lifted from App ---
-  isReviewMode: boolean;
-  currentDisplayIndex: number; // Index in the potentially shuffled displayQuestions array
-  score: number;
-  setQuizFinished: (finished: boolean) => void;
-  setCurrentDisplayIndex: (index: number) => void;
-  setScore: (score: number) => void;
-  // --- Callback to inform App about the currently displayed question ---
-  // Expects the refined DisplayQuestion type
-  onDisplayedQuestionChange: (question: DisplayQuestion | null) => void;
+    // --- State and Setters Lifted from App ---
+    isReviewMode: boolean;
+    currentDisplayIndex: number; // Index in the potentially shuffled displayQuestions array
+    score: number;
+    setQuizFinished: (finished: boolean) => void;
+    setCurrentDisplayIndex: (index: number) => void;
+    setScore: (score: number) => void;
+    // --- Callback to inform App about the currently displayed question ---
+    // Expects the refined DisplayQuestion type
+    onDisplayedQuestionChange: (question: DisplayQuestion | null) => void;
+    
+    // Recommendations props
+    recommendations?: QuestionRecommendations;
+    loadingRecommendations?: boolean;
+    recommendationsError?: string | null;
 }
 
 function Quiz({
@@ -60,7 +67,10 @@ function Quiz({
     setQuizFinished,
     setCurrentDisplayIndex, // Function to update App's index state
     setScore,
-    onDisplayedQuestionChange // Callback prop to notify App
+    onDisplayedQuestionChange, // Callback prop to notify App
+    recommendations,
+    loadingRecommendations,
+    recommendationsError
 }: Props) {
 
   // Local state ONLY for the processed (potentially shuffled) question array
@@ -229,12 +239,6 @@ function Quiz({
   return (
     // Centering the quiz card
     <div className="position-absolute top-50 start-50 translate-middle" style={{ width: '80%', maxWidth: '600px' }}>
-        {isReviewMode && ( /* Review Header */
-            <div className="text-center mb-3 alert alert-info">
-                <h4>Reviewing Answers</h4>
-                <p className="lead mb-0">Final Score: {score} out of {questions.length}</p> {/* Score based on original number */}
-            </div>
-        )}
 
         {/* Question Text */}
         <h4>{currentDisplayQuestion.question_text}</h4>
@@ -305,8 +309,32 @@ function Quiz({
                     <Button variant="info" onClick={handleEndReviewClick}> End Review & Reset </Button>
                 )
             )}
+            </div>
+
+            {/* Video Recommendations - INSIDE QUIZ CONTAINER, perfectly aligned */}
+            {isReviewMode && (
+                <div className="mt-4">
+                    {loadingRecommendations && (
+                        <div className="text-center">
+                            <Spinner animation="border" size="sm" />
+                            <span className="ms-2">Loading learning recommendations...</span>
+                        </div>
+                    )}
+                    
+                    {recommendationsError && (
+                        <Alert variant="warning">
+                            {recommendationsError}
+                        </Alert>
+                    )}
+                    
+                    {recommendations && !loadingRecommendations && (
+                        <VideoRecommendations recommendations={recommendations} />
+                    )}
+                </div>
+            )}
+            
         </div>
-    </div>
-  );
+    );
 }
+
 export default Quiz;

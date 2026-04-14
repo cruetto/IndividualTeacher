@@ -152,8 +152,7 @@ def load_user(user_id_str):
         print(f"User loader received invalid ObjectId string: {user_id_str}")
         return None
     try:
-        db = get_db()
-        user_data = db.users.find_one({'_id': ObjectId(user_id_str)})
+        user_data = get_db().users.find_one({'_id': ObjectId(user_id_str)})
         if user_data:
             return User(user_data)
         else:
@@ -757,7 +756,8 @@ def handle_chat():
 # --- Recommendation System ---
 # =============================
 
-from services.video_recommendations import find_recommendations, add_youtube_video, get_video_library_stats, extract_youtube_video_id
+from video_processor import generate_embeddings, extract_video_id
+from database import find_similar_videos
 
 @app.route('/api/recommendations', methods=['POST'])
 def get_recommendations():
@@ -770,19 +770,32 @@ def get_recommendations():
         incorrect_questions = data['incorrect_questions']
         all_recommendations = {}
         
-        for question in incorrect_questions:
+        # Generate embeddings for all questions in bulk
+        question_texts = [f"{q.get('topic', '')} {q.get('question_text', '')}" for q in incorrect_questions]
+        embeddings = generate_embeddings(question_texts)
+        
+        for idx, question in enumerate(incorrect_questions):
             question_id = question.get('id')
-            question_text = question.get('question_text', '')
-            topic = question.get('topic', '')
             
-            # Build search query combining question and topic
-            search_query = f"{topic} {question_text}"
+            # Get top 3 matching video segments
+            recommendations = find_similar_videos(embeddings[idx], limit=3)
             
-            # Get recommendations
-            recommendations = find_recommendations(search_query, top_k=3)
+            # Format for frontend
+            formatted_recommendations = []
+            for rec in recommendations:
+                formatted_recommendations.append({
+                    'video_id': rec['video_id'],
+                    'video_title': rec['video_title'],
+                    'text': rec['text'],
+                    'start_time': rec['start'],
+                    'end_time': rec['end'],
+                    'youtube_url': f"https://www.youtube.com/watch?v={rec['video_id']}&t={int(rec['start'])}",
+                    'relevance_score': round(rec['score'], 4)
+                })
+            
             all_recommendations[question_id] = {
-                'question_text': question_text,
-                'recommendations': recommendations
+                'question_text': question.get('question_text', ''),
+                'recommendations': formatted_recommendations
             }
         
         return jsonify(all_recommendations)
