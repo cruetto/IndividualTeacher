@@ -66,19 +66,18 @@ def find_similar_videos(embedding, limit=5):
     
     results = video_chunks.aggregate([
         {
-            "$search": {
-                "cosmosSearch": {
-                    "vector": embedding,
-                    "path": "embedding",
-                    "k": limit
-                },
-                "returnStoredSource": True
+            "$vectorSearch": {
+                "queryVector": embedding,
+                "path": "embedding",
+                "numCandidates": limit * 10,
+                "limit": limit,
+                "index": "video_embedding_index"
             }
         },
         {
             "$project": {
                 "embedding": 0,
-                "score": {"$meta": "searchScore"}
+                "score": {"$meta": "vectorSearchScore"}
             }
         }
     ])

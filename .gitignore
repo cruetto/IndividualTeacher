@@ -35,6 +35,7 @@ backend/.env
 backend/.venv/
 backend/__pycache__/
 backend/*.pyc
+backend/.pytest_cache/
 
 # OS files (root and everywhere)
 .DS_Store
@@ -42,3 +43,7 @@ Thumbs.db
 
 # General logs
 *.log
+
+# RS_vscode folder
+RS_vscode/
+memory-bank/
