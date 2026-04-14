@@ -753,6 +753,81 @@ def handle_chat():
         return jsonify({"error": "An unexpected server error occurred in chat."}), 500
 
 
+# =============================
+# --- Recommendation System ---
+# =============================
+
+from services.video_recommendations import find_recommendations, add_youtube_video, get_video_library_stats, extract_youtube_video_id
+
+@app.route('/api/recommendations', methods=['POST'])
+def get_recommendations():
+    """Get video recommendations for incorrect quiz questions"""
+    try:
+        data = request.get_json()
+        if not data or 'incorrect_questions' not in data:
+            return jsonify({"error": "Missing 'incorrect_questions' array"}), 400
+        
+        incorrect_questions = data['incorrect_questions']
+        all_recommendations = {}
+        
+        for question in incorrect_questions:
+            question_id = question.get('id')
+            question_text = question.get('question_text', '')
+            topic = question.get('topic', '')
+            
+            # Build search query combining question and topic
+            search_query = f"{topic} {question_text}"
+            
+            # Get recommendations
+            recommendations = find_recommendations(search_query, top_k=3)
+            all_recommendations[question_id] = {
+                'question_text': question_text,
+                'recommendations': recommendations
+            }
+        
+        return jsonify(all_recommendations)
+    
+    except Exception as e:
+        print(f"Error getting recommendations: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Failed to get recommendations"}), 500
+
+@app.route('/api/recommendations/library/add', methods=['POST'])
+@login_required
+def add_video_to_library():
+    """Admin endpoint to add new YouTube video to recommendation library"""
+    try:
+        data = request.get_json()
+        if not data or 'video_url' not in data or 'title' not in data:
+            return jsonify({"error": "Missing 'video_url' or 'title'"}), 400
+        
+        video_id = extract_youtube_video_id(data['video_url'])
+        if not video_id:
+            return jsonify({"error": "Invalid YouTube URL"}), 400
+        
+        chunks_added = add_youtube_video(video_id, data['title'])
+        
+        return jsonify({
+            "message": f"Added {chunks_added} chunks for video",
+            "chunks_added": chunks_added,
+            "video_id": video_id
+        })
+    
+    except Exception as e:
+        print(f"Error adding video: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Failed to add video"}), 500
+
+@app.route('/api/recommendations/library/stats', methods=['GET'])
+def get_library_stats():
+    """Get statistics about video recommendation library"""
+    try:
+        stats = get_video_library_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": "Failed to get library stats"}), 500
+
+
 # ==================
 # --- Run the App ---
 # ==================
