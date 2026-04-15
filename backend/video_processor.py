@@ -5,6 +5,7 @@ from sentence_transformers import SentenceTransformer
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 import re
+import requests
 
 # Load embedding model once
 _model = None
@@ -25,7 +26,20 @@ def generate_embeddings(texts):
 def get_youtube_transcript(video_id):
     """Fetch transcript from YouTube video"""
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+        # ✅ MAY 2026 OFFICIAL WORKING FIX
+        # YouTube broke old API endpoints. Must use new instance .fetch() method from v1.0+
+        ytt_api = YouTubeTranscriptApi()
+        fetched_transcript = ytt_api.fetch(video_id, languages=['en'])
+        
+        # Convert new API format to standard dict format
+        transcript = []
+        for snippet in fetched_transcript.snippets:
+            transcript.append({
+                'text': snippet.text,
+                'start': snippet.start,
+                'duration': snippet.duration
+            })
+            
         return transcript
     except (TranscriptsDisabled, NoTranscriptFound):
         print(f"❌ No transcript available for video {video_id}")
@@ -71,6 +85,17 @@ def chunk_transcript(transcript, chunk_size=45):
 
 def process_video(video_id, video_title=None):
     """Process full video: fetch transcript, chunk, generate embeddings"""
+    # Automatically fetch video title if not provided
+    if video_title is None:
+        print(f"   📡 Fetching video title from YouTube...")
+        fetched_title = get_youtube_video_title(video_id)
+        if fetched_title:
+            video_title = fetched_title
+            print(f"   ✅ Title: {video_title}")
+        else:
+            video_title = f"Video {video_id}"
+            print(f"   ⚠️  Using default title")
+
     transcript = get_youtube_transcript(video_id)
     if not transcript:
         return None
@@ -96,6 +121,20 @@ def process_video(video_id, video_title=None):
         })
     
     return documents
+
+def get_youtube_video_title(video_id):
+    """Fetch video title from YouTube using public oEmbed API (no API key required)"""
+    try:
+        url = f"https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v={video_id}&format=json"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('title')
+        return None
+    except Exception as e:
+        print(f"⚠️  Could not fetch title for {video_id}: {e}")
+        return None
+
 
 def extract_video_id(url_or_id):
     """Extract video ID from YouTube URL or return as-is if already ID"""

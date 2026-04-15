@@ -4,19 +4,27 @@ Add any number of YouTube videos by ID or URL
 """
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from video_processor import process_video, extract_video_id
 from database import connect_to_db, add_video_embeddings
 
-# Add your videos here (just video IDs, no titles required!)
+# Add your videos here (just video IDs or URLs, NO TITLES REQUIRED!)
+# Titles are automatically fetched directly from YouTube
 VIDEO_LIST = [
-    "__vX2sjlpXU",  # Big-O notation in 5 minutes
+    # Test video - Binary Search
+    "T98PIp4omUA",
     
     # Add more videos here anytime:
-    # "T98PIp4omUA",
     # "mtvbVLK5xDQ",
     # "Mo4vesaut8g",
+    # "__vX2sjlpXU",
+    # "PFmuCDHHpwk",
+    # "pTB0EiLXUC8",
+    # "G3lJAxg1cy8",
+    # "0OQJDd3QqQM",
+    # "HVsySz-h9r4",
+    # "RGOj5yH7evk",
     # "https://www.youtube.com/watch?v=abc123xyz",
 ]
 
