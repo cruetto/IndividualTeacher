@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 
 import pytest
-from video_processor import generate_embeddings, extract_video_id, chunk_transcript
+from video_processor import generate_embeddings, extract_video_id, chunk_transcript, get_youtube_video_title
 
 
 class TestVideoProcessor:
@@ -48,8 +48,8 @@ class TestVideoProcessor:
         for input_value, expected in test_cases:
             assert extract_video_id(input_value) == expected
     
-    def test_transcript_chunking(self):
-        """Test transcript is split into proper timed chunks"""
+    def test_sliding_window_chunking(self):
+        """Test new sliding window chunking with 30/10 overlap"""
         
         sample_transcript = [
             {'start': 0.0, 'duration': 10.0, 'text': 'First part'},
@@ -60,22 +60,35 @@ class TestVideoProcessor:
             {'start': 50.0, 'duration': 10.0, 'text': 'Sixth part'},
         ]
         
-        chunks = chunk_transcript(sample_transcript, chunk_size=45)
+        # 30s window, 10s overlap
+        chunks = chunk_transcript(sample_transcript, window_size=30, overlap=10)
         
-        assert len(chunks) == 2
+        # Should create sliding windows: 0-30, 20-50, 40-70
+        assert len(chunks) >= 3
         
-        # First chunk should be 0-50 seconds
+        # Check window positions
         assert chunks[0]['start'] == 0.0
-        assert chunks[0]['end'] >= 45
+        assert chunks[0]['end'] == 30.0
         
-        # Second chunk should be remainder
-        assert chunks[1]['start'] == 50.0
+        assert chunks[1]['start'] == 20.0
+        assert chunks[1]['end'] == 50.0
+        
+        assert chunks[2]['start'] == 40.0
+        assert chunks[2]['end'] == 70.0
         
         # All text should be preserved
         full_text = ' '.join([c['text'] for c in chunks])
         assert 'First part' in full_text
         assert 'Sixth part' in full_text
     
+    def test_youtube_title_fetch(self):
+        """Test automatic youtube title fetching"""
+        # Test known working video
+        title = get_youtube_video_title("dQw4w9WgXcQ")
+        assert title is not None
+        assert len(title) > 5
+
+
     def test_transcript_chunking_edge_cases(self):
         """Test chunking edge cases"""
         
