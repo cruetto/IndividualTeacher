@@ -160,6 +160,28 @@ def get_youtube_video_title(video_id):
         return None
 
 
+def search_youtube_videos(query: str, limit: int = 3):
+    """Search YouTube for videos matching query"""
+    try:
+        from youtubesearchpython import VideosSearch
+        search = VideosSearch(query, limit=limit)
+        results = search.result()
+        
+        videos = []
+        for video in results['result']:
+            videos.append({
+                'video_id': video['id'],
+                'title': video['title'],
+                'channel': video['channel']['name']
+            })
+        
+        return videos
+        
+    except Exception as e:
+        print(f"⚠️  YouTube search failed: {e}")
+        return []
+
+
 def extract_video_id(url_or_id):
     """Extract video ID from YouTube URL or return as-is if already ID"""
     if len(url_or_id) == 11 and re.match(r'^[a-zA-Z0-9_-]+$', url_or_id):

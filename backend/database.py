@@ -59,8 +59,12 @@ def add_video_embeddings(video_id, video_title, chunks):
     
     return len(result.inserted_ids)
 
-def find_similar_videos(embedding, limit=5):
-    """Find similar video chunks using vector search"""
+def find_similar_videos(embedding, limit=3, min_score=0.80):
+    """
+    Find similar video chunks using vector search
+    min_score: 0.80 = 80% similarity minimum (strict quality filter)
+    Returns maximum 3 best matches
+    """
     if video_chunks is None:
         connect_to_db()
     
@@ -82,12 +86,25 @@ def find_similar_videos(embedding, limit=5):
         }
     ])
     
-    return list(results)
+    # Filter out low quality matches
+    good_results = []
+    for result in results:
+        if result['score'] >= min_score:
+            good_results.append(result)
+    
+    return good_results
 
 def get_video_count():
     if video_chunks is None:
         connect_to_db()
     return video_chunks.distinct("video_id")
+
+def video_exists(video_id):
+    """Check if video is already in database"""
+    if video_chunks is None:
+        connect_to_db()
+    return video_chunks.count_documents({"video_id": video_id}) > 0
+
 
 def get_db():
     global db

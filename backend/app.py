@@ -756,12 +756,18 @@ def handle_chat():
 # --- Recommendation System ---
 # =============================
 
-from video_processor import generate_embeddings, extract_video_id
-from database import find_similar_videos
+from video_processor import generate_embeddings, extract_video_id, search_youtube_videos, process_video
+from database import find_similar_videos, video_exists, add_video_embeddings
 
 @app.route('/api/recommendations', methods=['POST'])
 def get_recommendations():
-    """Get video recommendations for incorrect quiz questions"""
+    """
+    Smart video recommendation system
+    - First tries local database
+    - If not enough good results: automatically searches YouTube
+    - Imports new videos on demand
+    - Returns best matches
+    """
     try:
         data = request.get_json()
         if not data or 'incorrect_questions' not in data:
@@ -770,15 +776,40 @@ def get_recommendations():
         incorrect_questions = data['incorrect_questions']
         all_recommendations = {}
         
+        print(f"\n🔍 Processing {len(incorrect_questions)} incorrect questions")
+        
         # Generate embeddings for all questions in bulk
         question_texts = [f"{q.get('topic', '')} {q.get('question_text', '')}" for q in incorrect_questions]
         embeddings = generate_embeddings(question_texts)
         
         for idx, question in enumerate(incorrect_questions):
             question_id = question.get('id')
+            search_query = f"{question.get('topic', '')} {question.get('question_text', '')}"
             
-            # Get top 3 matching video segments
-            recommendations = find_similar_videos(embeddings[idx], limit=3)
+            print(f"\n📝 Question: {search_query[:60]}...")
+            
+            # FIRST: Search what we already have
+            recommendations = find_similar_videos(embeddings[idx], limit=4)
+            
+            print(f"✅ Local database found: {len(recommendations)} good matches")
+            
+            # NOT ENOUGH GOOD RESULTS → GO TO YOUTUBE
+            if len(recommendations) < 2:
+                print(f"⚠️  Not enough good matches. Searching YouTube...")
+                
+                youtube_videos = search_youtube_videos(search_query, limit=2)
+                
+                for video in youtube_videos:
+                    if not video_exists(video['video_id']):
+                        print(f"🚀 Importing new video: {video['video_id']}")
+                        chunks = process_video(video['video_id'])
+                        if chunks:
+                            add_video_embeddings(video['video_id'], chunks[0]['video_title'], chunks)
+                            print(f"✅ Video imported successfully")
+                
+                # Search again with fresh content
+                print(f"🔍 Re-searching database with new content...")
+                recommendations = find_similar_videos(embeddings[idx], limit=4)
             
             # Format for frontend
             formatted_recommendations = []
@@ -797,6 +828,8 @@ def get_recommendations():
                 'question_text': question.get('question_text', ''),
                 'recommendations': formatted_recommendations
             }
+            
+            print(f"✅ Final recommendations: {len(formatted_recommendations)}")
         
         return jsonify(all_recommendations)
     
