@@ -49,37 +49,61 @@ def get_youtube_transcript(video_id):
         print(e)
         return None
 
-def chunk_transcript(transcript, chunk_size=45):
-    """Split transcript into timed chunks"""
+def chunk_transcript(transcript, window_size=30, overlap=10):
+    """
+    Sliding window chunking with overlap
+    Default: 30 second windows, 10 second overlap
+    This means chunks advance by 20 seconds each step
+    Every transcript position appears in ~2 chunks
+    """
     if not transcript:
         return []
     
     chunks = []
-    current_chunk = []
-    current_start = None
+    
+    # First build full timeline with cumulative text
+    timeline = []
+    current_text = []
     
     for segment in transcript:
-        if current_start is None:
-            current_start = segment['start']
-        
-        current_chunk.append(segment['text'])
-        end_time = segment['start'] + segment.get('duration', 0)
-        
-        if end_time - current_start >= chunk_size:
-            chunks.append({
-                'text': ' '.join(current_chunk).strip(),
-                'start': current_start,
-                'end': end_time
-            })
-            current_chunk = []
-            current_start = None
-    
-    if current_chunk and current_start is not None:
-        chunks.append({
-            'text': ' '.join(current_chunk).strip(),
-            'start': current_start,
-            'end': end_time
+        current_text.append(segment['text'])
+        timeline.append({
+            'time': segment['start'],
+            'end_time': segment['start'] + segment.get('duration', 0),
+            'text': segment['text']
         })
+    
+    if not timeline:
+        return []
+    
+    end_of_video = timeline[-1]['end_time']
+    
+    # Sliding window implementation
+    window_start = 0.0
+    step = window_size - overlap
+    
+    while window_start < end_of_video:
+        window_end = window_start + window_size
+        
+        # Collect all segments that intersect with this window
+        window_text = []
+        actual_start = None
+        
+        for entry in timeline:
+            # Check if segment overlaps with current window
+            if entry['end_time'] > window_start and entry['time'] < window_end:
+                window_text.append(entry['text'])
+                if actual_start is None:
+                    actual_start = entry['time']
+        
+        if window_text:
+            chunks.append({
+                'text': ' '.join(window_text).strip(),
+                'start': window_start,
+                'end': window_end
+            })
+        
+        window_start += step
     
     return chunks
 
