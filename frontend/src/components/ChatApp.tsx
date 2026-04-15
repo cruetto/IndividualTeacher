@@ -105,7 +105,7 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
       {/* Chat Interface Offcanvas */}
       <Offcanvas
         show={showChat} onHide={() => setShowChat(false)} placement="end"
-        backdrop={false} scroll={true} style={{ zIndex: 1045, height: '80vh', maxHeight: '600px', width: '350px', top: 'auto', bottom: 'calc(2rem + 60px + 1rem)', right: '1rem', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} // Adjusted style for floating effect
+        backdrop={false} scroll={true} style={{ zIndex: 1045, height: '80vh', maxHeight: '600px', width: '380px', top: 'auto', bottom: 'calc(2rem + 60px + 1rem)', right: '1rem', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} // Adjusted style for floating effect
       >
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>Quiz Assistant</Offcanvas.Title>

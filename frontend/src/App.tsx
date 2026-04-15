@@ -709,24 +709,10 @@ function App() {
                                  // 1. Do we have data for the selected quiz? If YES, render Quiz.
                                  currentQuizData && currentQuizAnswers ? (
                                      <>
-                                          <h1 style={{ textAlign: 'center', marginBottom: '2rem' }}>{currentQuizData.title}</h1>
-
-                                          {quizFinished && (
-                                              <div className="alert alert-info text-center" style={{ 
-                                                  position: 'fixed', 
-                                                  top: '1rem', 
-                                                  right: '1rem', 
-                                                  minWidth: '200px',
-                                                  zIndex: 100,
-                                                  padding: '0.75rem 1rem'
-                                              }}>
-                                                  <strong>Score: {currentScore} / {currentQuizData.questions.length}</strong>
-                                              </div>
-                                          )}
-
                                           <Quiz
                                               key={`${currentQuizData.id}-${shuffleQuestions}-${shuffleAnswers}`} // Use composite key
                                               quizId={currentQuizData.id}
+                                              quizTitle={currentQuizData.title}
                                               questions={currentQuizData.questions}
                                               userAnswers={currentQuizAnswers}
                                               onAnswerUpdate={handleAnswerUpdate}

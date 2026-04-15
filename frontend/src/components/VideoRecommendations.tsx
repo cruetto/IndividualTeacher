@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { VideoRecommendation, QuestionRecommendations } from '../interfaces/recommendations';
 
 interface Props {
@@ -6,7 +6,6 @@ interface Props {
 }
 
 const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
-    const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
     
     const formatTime = (seconds: number): string => {
         const mins = Math.floor(seconds / 60);
@@ -21,76 +20,53 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
         return 'bg-secondary';
     };
 
-    const toggleVideo = (id: string) => {
-        setExpandedVideo(expandedVideo === id ? null : id);
-    };
-
     return (
-        // ✅ Adjust maxWidth to make it wider or narrower. This will always stay perfectly centered.
         <div 
             className="mt-4" 
             style={{ 
-                maxWidth: '800px', 
+                width: '160%', 
                 marginLeft: 'auto',
                 marginRight: 'auto',
-                transform: 'translateX(calc(-50% + 300px))' // ✅ Smart centering inside quiz container
+                transform: 'translateX(calc(-50% + 300px))' // ✅ Perfect centering
             }}
         >
             {recommendations.recommendations.length === 0 ? null : (
                 <div className="list-group">
                     {recommendations.recommendations.map((rec, idx) => (
-                        <div key={idx} className="list-group-item px-3 py-3">
+                        <div key={idx} className="list-group-item px-3 py-3 mb-2">
                             
-                            <div 
-                                className="row gx-3 align-items-center"
-                                onClick={() => toggleVideo(`${rec.video_id}-${rec.start_time}`)}
-                                style={{ cursor: 'pointer' }}
-                            >
+                            <div className="row gx-3">
                                 
-                                {/* Thumbnail / Video preview */}
-                                <div className="col-3 col-md-2">
-                                    <img 
-                                        src={`https://i.ytimg.com/vi/${rec.video_id}/hqdefault.jpg`}
-                                        alt={rec.video_title}
-                                        className="img-fluid rounded"
-                                        style={{ objectFit: 'cover', height: '55px', width: '100%' }}
-                                    />
-                                </div>
-
-                                {/* Main content */}
-                                <div className="col-7 col-md-8">
-                                    <div className="fw-bold small">{rec.video_title}</div>
-                                    <div className="text-muted small">
-                                        <span>⏱️ {formatTime(rec.start_time)} — {formatTime(rec.end_time)}</span>
-                                    </div>
-                                    <div className="mt-1 text-muted small">
-                                        {rec.text.length > 75 
-                                            ? `${rec.text.substring(0, 75)}...` 
-                                            : rec.text}
+                                {/* Left side: Video Player */}
+                                <div className="col-md-5">
+                                    <div className="ratio ratio-16x9">
+                                        <iframe
+                                            src={`https://www.youtube.com/embed/${rec.video_id}?start=${Math.floor(rec.start_time)}`}
+                                            title={rec.video_title}
+                                            frameBorder="0"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowFullScreen
+                                        ></iframe>
                                     </div>
                                 </div>
 
-                                {/* Match percentage */}
-                                <div className="col-2 col-md-2 text-end">
-                                    <span className={`badge ${getScoreColor(rec.relevance_score)} rounded-pill`}>
-                                        {Math.round(rec.relevance_score * 100)}%
-                                    </span>
+                                {/* Right side: Information */}
+                                <div className="col-md-7">
+                                    <div className="fw-bold">{rec.video_title}</div>
+                                    <div className="text-muted small mt-1">
+                                        ⏱️ {formatTime(rec.start_time)} — {formatTime(rec.end_time)}
+                                    </div>
+                                    <div className="mt-2 text-muted small">
+                                        {rec.text}
+                                    </div>
+                                    <div className="mt-2 text-end">
+                                        <span className={`badge ${getScoreColor(rec.relevance_score)} rounded-pill`}>
+                                            {Math.round(rec.relevance_score * 100)}% match
+                                        </span>
+                                    </div>
                                 </div>
                                 
                             </div>
-
-                            {/* Embedded YouTube Player */}
-                            {expandedVideo === `${rec.video_id}-${rec.start_time}` && (
-                                <div className="mt-3 ratio ratio-16x9">
-                                    <iframe
-                                        src={`https://www.youtube.com/embed/${rec.video_id}?start=${Math.floor(rec.start_time)}&autoplay=1`}
-                                        title={rec.video_title}
-                                        frameBorder="0"
-                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                        allowFullScreen
-                                    ></iframe>
-                                </div>
-                            )}
 
                         </div>
                     ))}

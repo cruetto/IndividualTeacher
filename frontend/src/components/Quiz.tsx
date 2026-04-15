@@ -28,6 +28,7 @@ interface DisplayQuestion extends Omit<Question, 'answers'> { // Exclude origina
 
 interface Props {
     quizId: string;
+    quizTitle: string;
     questions: Question[]; // Original, unshuffled questions
     userAnswers: number[]; // Stores the ORIGINAL index of the selected answer for each ORIGINAL question index
     onAnswerUpdate: (quizId: string, originalQuestionIndex: number, originalAnswerIndex: number) => void; // Use original indices
@@ -54,6 +55,7 @@ interface Props {
 
 function Quiz({
     quizId,
+    quizTitle,
     questions, // Original questions from App
     userAnswers, // Persisted answers state from App (using original indices)
     onAnswerUpdate,
@@ -238,7 +240,11 @@ function Quiz({
 
   return (
     // Centering the quiz card
-    <div className="position-absolute top-50 start-50 translate-middle" style={{ width: '80%', maxWidth: '600px' }}>
+    <div className="mx-auto" style={{ width: '80%', maxWidth: '600px' }}>
+
+        {/* Quiz Title */}
+        {/* ✅ Change marginTop value here to adjust space above the title */}
+        <h1 style={{ textAlign: 'center', marginTop: '10rem', marginBottom: '2rem' }}>{quizTitle}</h1>
 
         {/* Question Text */}
         <h4>{currentDisplayQuestion.question_text}</h4>
@@ -312,8 +318,9 @@ function Quiz({
             </div>
 
             {/* Video Recommendations - INSIDE QUIZ CONTAINER, perfectly aligned */}
+            {/* ✅ Change marginTop value here to adjust space between quiz and recommendations */}
             {isReviewMode && (
-                <div className="mt-4">
+                <div style={{ marginTop: '10rem' }}>
                     {loadingRecommendations && (
                         <div className="text-center">
                             <Spinner animation="border" size="sm" />
