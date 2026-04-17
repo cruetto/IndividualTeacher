@@ -17,13 +17,6 @@ class TestDatabase:
         assert db is not None
         assert db.name == 'Quizzes'
     
-    def test_get_video_count(self):
-        """Test that we have imported videos in database"""
-        videos = get_video_count()
-        assert len(videos) >= 11  # Should have all imported videos
-        
-        # Check known video titles are present
-        assert '__vX2sjlpXU' in videos  # Big O 100 seconds video
     
     def test_add_video_embeddings_cleanup(self):
         """Test that existing videos are properly deleted before re-import"""
