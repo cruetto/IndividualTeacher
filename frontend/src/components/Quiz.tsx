@@ -65,6 +65,7 @@ function Quiz({
     // Destructure lifted state and setters
     isReviewMode,
     currentDisplayIndex, // Controlled by App
+    score,
     setQuizFinished,
     setCurrentDisplayIndex, // Function to update App's index state
     setScore,
@@ -244,6 +245,15 @@ function Quiz({
         {/* Quiz Title */}
         {/* ✅ Change marginTop value here to adjust space above the title */}
         <h1 style={{ textAlign: 'center', marginTop: '10rem', marginBottom: '2rem' }}>{quizTitle}</h1>
+
+        {/* Score display when review mode is active */}
+        {isReviewMode && (
+            <div className="text-center mb-4">
+                <div className="alert alert-success" role="alert">
+                    <h4>Quiz Completed. Your Score: {score} / {questions.length}</h4>
+                </div>
+            </div>
+        )}
 
         {/* Question Text */}
         <h4>{currentDisplayQuestion.question_text}</h4>
