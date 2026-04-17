@@ -776,22 +776,29 @@ def get_recommendations():
         incorrect_questions = data['incorrect_questions']
         all_recommendations = {}
         
-        print(f"\n🔍 Processing {len(incorrect_questions)} incorrect questions")
+        print(f"Processing {len(incorrect_questions)} incorrect questions")
         
         # Generate embeddings for all questions in bulk
-        question_texts = [f"{q.get('topic', '')} {q.get('question_text', '')}" for q in incorrect_questions]
+        question_texts = []
+        for q in incorrect_questions:
+            embed_text = f"{q.get('question_text', '')}"
+            if q.get('correct_answer'):
+                embed_text += f"\nCorrect Answer: {q.get('correct_answer', '')}"
+            if q.get('user_answer'):
+                embed_text += f"\nUser answered incorrectly: {q.get('user_answer', '')}"
+            question_texts.append(embed_text)
+        
         embeddings = generate_embeddings(question_texts)
         
         for idx, question in enumerate(incorrect_questions):
             question_id = question.get('id')
-            search_query = f"{question.get('topic', '')} {question.get('question_text', '')}"
             
-            print(f"\n📝 Question: {search_query[:60]}...")
+            print(f"Question: {question.get('question_text', '')[:60]}...")
             
-            # FIRST: Search what we already have
+            # Search local database
             recommendations = find_similar_videos(embeddings[idx], limit=4)
             
-            print(f"✅ Local database found: {len(recommendations)} good matches")
+            print(f"Local database found: {len(recommendations)} good matches")
             
             # Format for frontend
             formatted_recommendations = []
@@ -811,7 +818,7 @@ def get_recommendations():
                 'recommendations': formatted_recommendations
             }
             
-            print(f"✅ Final recommendations: {len(formatted_recommendations)}")
+            print(f"Final recommendations: {len(formatted_recommendations)}")
         
         return jsonify(all_recommendations)
     

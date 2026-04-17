@@ -17,7 +17,7 @@ def get_embedding_model():
     if _model is None:
         print("Loading embedding model (all-MiniLM-L6-v2)...")
         _model = SentenceTransformer('all-MiniLM-L6-v2')
-        print("✅ Model loaded")
+        print("Model loaded successfully")
     return _model
 
 def generate_embeddings(texts):
