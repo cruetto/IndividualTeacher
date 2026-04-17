@@ -1,5 +1,5 @@
 import React from 'react';
-import { VideoRecommendation, QuestionRecommendations } from '../interfaces/recommendations';
+import { QuestionRecommendations } from '../interfaces/recommendations';
 
 interface Props {
     recommendations: QuestionRecommendations;
@@ -30,7 +30,16 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
                 transform: 'translateX(calc(-50% + 300px))' // ✅ Perfect centering
             }}
         >
-            {recommendations.recommendations.length === 0 ? null : (
+            {recommendations.recommendations.length === 0 ? (
+                <div className="card text-center py-5">
+                    <div className="card-body">
+                        <h5 className="text-muted mb-3">No recommended videos available</h5>
+                        <p className="text-muted small mb-0">
+                            We couldn't find matching video explanations for this question at the moment.
+                        </p>
+                    </div>
+                </div>
+            ) : (
                 <div className="list-group">
                     {recommendations.recommendations.map((rec, idx) => (
                         <div key={idx} className="list-group-item px-3 py-3 mb-2">

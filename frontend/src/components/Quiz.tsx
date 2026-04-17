@@ -65,7 +65,6 @@ function Quiz({
     // Destructure lifted state and setters
     isReviewMode,
     currentDisplayIndex, // Controlled by App
-    score,
     setQuizFinished,
     setCurrentDisplayIndex, // Function to update App's index state
     setScore,

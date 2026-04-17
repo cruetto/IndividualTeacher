@@ -796,7 +796,7 @@ def get_recommendations():
             print(f"Question: {question.get('question_text', '')[:60]}...")
             
             # Search local database
-            recommendations = find_similar_videos(embeddings[idx], limit=4)
+            recommendations = find_similar_videos(embeddings[idx], limit=3)
             
             print(f"Local database found: {len(recommendations)} good matches")
             

@@ -14,8 +14,7 @@ import QuizManager from './components/QuizManager';
 import QuizCreator from './components/QuizCreator';
 import QuizEditor from './components/QuizEditor';
 import { QuizData, Question, DisplayQuestion, AllUserAnswers, User, ChatContext } from './interfaces/interfaces';
-import { RecommendationsResponse, QuestionRecommendations } from './interfaces/recommendations';
-import VideoRecommendations from './components/VideoRecommendations';
+import { RecommendationsResponse } from './interfaces/recommendations';
 
 // --- Config ---
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
