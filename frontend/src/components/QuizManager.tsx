@@ -62,6 +62,12 @@ const QuizManager = ({
   // State for the right-click context menu
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, quizId: null, quizTitle: null, isOwned: false });
   const [isLoggingOut, setIsLoggingOut] = useState(false); // Spinner state for logout button
+  
+  // Clustering feature
+  const [clusterizeEnabled, setClusterizeEnabled] = useState(false);
+  const [isClustering, setIsClustering] = useState(false);
+  const [clusters, setClusters] = useState<number[] | null>(null);
+  const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
 
   // --- Handlers ---
   const handleCloseOffcanvas = () => setShowOffcanvas(false);
@@ -152,39 +158,92 @@ const QuizManager = ({
 
   // --- Rendering Function for Quiz Lists ---
   // Renders a list group for guest, user, or public quizzes
-  const renderQuizList = (list: QuizData[], title: string, type: 'guest' | 'user' | 'public') => (
-     <>
-        {/* Only show the heading if the list has items */}
-        {list.length > 0 && <h5 className="mt-3 mb-1 text-muted">{title}</h5>}
+  const renderQuizList = (list: QuizData[], title: string, type: 'guest' | 'user' | 'public', clusterOffset: number = 0) => {
+    if (list.length === 0) {
+      return (
         <ListGroup variant="flush">
-          {list.map((quiz) => {
-            // Determine if the quiz is editable/deletable (only user's own quizzes)
-            const canEditOrDelete = type === 'user' && !!currentUser;
-            return (
-                <ListGroup.Item
-                  action // Makes it look clickable
-                  active={selectedQuizId === quiz.id} // Highlight if selected
-                  key={`${type}-${quiz.id}`} // Unique key combining type and ID
-                  onClick={() => handleQuizSelect(quiz.id)} // Select on click
-                  // Attach context menu handler only if editable
-                  onContextMenu={canEditOrDelete ? (e) => handleContextMenu(e, quiz, true) : undefined}
-                  style={{ cursor: 'pointer', paddingLeft: '10px', paddingRight: '10px' }}
-                  // Tooltip for right-click action
-                  title={canEditOrDelete ? `${quiz.title} (Right-click for options)` : quiz.title}
-                >
-                  {quiz.title} {/* Display quiz title */}
-                  {/* Add a badge for temporary guest quizzes */}
-                  {type === 'guest' && <span className="badge bg-secondary ms-2 float-end">Temporary</span>}
-                </ListGroup.Item>
-            );
-          })}
-           {/* Optional: Show message if a specific list is empty */}
            {list.length === 0 && type === 'guest' && !currentUser && <ListGroup.Item disabled className="text-muted small fst-italic">(No temporary quizzes)</ListGroup.Item>}
            {list.length === 0 && type === 'user' && currentUser && <ListGroup.Item disabled className="text-muted small fst-italic">(No quizzes created yet)</ListGroup.Item>}
            {list.length === 0 && type === 'public' && <ListGroup.Item disabled className="text-muted small fst-italic">(No public quizzes available)</ListGroup.Item>}
         </ListGroup>
+      );
+    }
+
+    // If clustering is enabled AND this is not public quizzes, group quizzes by cluster
+    if (clusterizeEnabled && clusters && clusterOffset >= 0) {
+      // Build clusters for this list
+      const clusterGroups: { [key: number]: QuizData[] } = {};
+      
+      list.forEach((quiz, idx) => {
+        const clusterIdx = clusters[clusterOffset + idx];
+        if (!clusterGroups[clusterIdx]) {
+          clusterGroups[clusterIdx] = [];
+        }
+        clusterGroups[clusterIdx].push(quiz);
+      });
+
+      return (
+        <>
+          <h5 className="mt-3 mb-1 text-muted">{title}</h5>
+          {Object.entries(clusterGroups)
+            .sort(([a], [b]) => parseInt(a) - parseInt(b))
+            .map(([clusterId, quizzes]) => (
+              <div key={`cluster-${type}-${clusterId}`}>
+                <h6 className="mt-2 mb-1 text-primary small fw-bold">
+                  📁 {clusterNames ? clusterNames[parseInt(clusterId)] : `Cluster ${parseInt(clusterId) + 1}`}
+                  <span className="text-muted fw-normal ms-1">({quizzes.length} quizzes)</span>
+                </h6>
+                <ListGroup variant="flush" className="mb-2">
+                  {quizzes.map((quiz) => {
+                    const canEditOrDelete = type === 'user' && !!currentUser;
+                    return (
+                      <ListGroup.Item
+                        action
+                        active={selectedQuizId === quiz.id}
+                        key={`${type}-${quiz.id}`}
+                        onClick={() => handleQuizSelect(quiz.id)}
+                        onContextMenu={canEditOrDelete ? (e) => handleContextMenu(e, quiz, true) : undefined}
+                        style={{ cursor: 'pointer', paddingLeft: '20px', paddingRight: '10px' }}
+                        title={canEditOrDelete ? `${quiz.title} (Right-click for options)` : quiz.title}
+                      >
+                        {quiz.title}
+                        {type === 'guest' && <span className="badge bg-secondary ms-2 float-end">Temporary</span>}
+                      </ListGroup.Item>
+                    );
+                  })}
+                </ListGroup>
+              </div>
+            ))}
+        </>
+      );
+    }
+
+    // Normal flat rendering when clustering is disabled
+    return (
+     <>
+        {list.length > 0 && <h5 className="mt-3 mb-1 text-muted">{title}</h5>}
+        <ListGroup variant="flush">
+          {list.map((quiz) => {
+            const canEditOrDelete = type === 'user' && !!currentUser;
+            return (
+                <ListGroup.Item
+                  action
+                  active={selectedQuizId === quiz.id}
+                  key={`${type}-${quiz.id}`}
+                  onClick={() => handleQuizSelect(quiz.id)}
+                  onContextMenu={canEditOrDelete ? (e) => handleContextMenu(e, quiz, true) : undefined}
+                  style={{ cursor: 'pointer', paddingLeft: '10px', paddingRight: '10px' }}
+                  title={canEditOrDelete ? `${quiz.title} (Right-click for options)` : quiz.title}
+                >
+                  {quiz.title}
+                  {type === 'guest' && <span className="badge bg-secondary ms-2 float-end">Temporary</span>}
+                </ListGroup.Item>
+            );
+          })}
+        </ListGroup>
      </>
-  );
+    );
+  };
 
   // --- Component Return ---
   return (
@@ -263,14 +322,55 @@ const QuizManager = ({
                 type="switch" id="shuffle-answers-check" label="Shuffle Answers"
                 checked={shuffleAnswers} onChange={onShuffleAnswersToggle} className="small"
             />
+            <hr className="my-2"/>
+            <Form.Check
+                type="switch" id="clusterize-check" label={isClustering ? "Clustering quizzes..." : "Clusterize Quizzes"}
+                checked={clusterizeEnabled} 
+                disabled={isClustering}
+                onChange={async () => {
+                    const newState = !clusterizeEnabled;
+                    setClusterizeEnabled(newState);
+                    
+                    if (newState) {
+                        setIsClustering(true);
+                        setClusters(null);
+                        
+                        // Cluster ONLY user/guest quizzes, exclude public quizzes
+                        const allQuizzes = currentUser ? userQuizList : guestQuizList;
+                        
+                        try {
+                            const response = await fetch('http://localhost:5001/api/cluster-quizzes', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ titles: allQuizzes.map(q => q.title) })
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                setClusters(data.clusters);
+                                setClusterNames(data.names);
+                            }
+                        } catch (err) {
+                            console.error("Clustering failed:", err);
+                        } finally {
+                            setIsClustering(false);
+                        }
+                    } else {
+                        setClusters(null);
+                        setClusterNames(null);
+                    }
+                }} 
+                className="small"
+            />
           </div>
 
           {/* Quiz Lists Section */}
            <div style={{ flexGrow: 1, overflowY: 'auto', borderTop: '1px solid #eee', paddingTop: '10px' }}>
                {/* Conditionally render lists based on currentUser */}
-               {!currentUser && renderQuizList(guestQuizList, "Temporary Quizzes", 'guest')}
-               {currentUser && renderQuizList(userQuizList, "My Quizzes", 'user')}
-               {renderQuizList(publicQuizList, "Public Quizzes", 'public')}
+               {!currentUser && renderQuizList(guestQuizList, "Temporary Quizzes", 'guest', 0)}
+               {currentUser && renderQuizList(userQuizList, "My Quizzes", 'user', 0)}
+               {/* Public quizzes are never clustered, always flat */}
+               {renderQuizList(publicQuizList, "Public Quizzes", 'public', -1)}
 
                {/* Overall empty state check */}
                {!authLoading && guestQuizList.length === 0 && userQuizList.length === 0 && publicQuizList.length === 0 && (

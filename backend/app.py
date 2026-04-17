@@ -863,6 +863,63 @@ def get_library_stats():
         return jsonify({"error": "Failed to get library stats"}), 500
 
 
+@app.route('/api/cluster-quizzes', methods=['POST'])
+def cluster_quizzes():
+    """
+    Cluster quiz titles using semantic embeddings and K-Means clustering
+    Accepts: JSON array of quiz titles
+    Returns: Array of cluster numbers and automatic cluster names
+    """
+    try:
+        data = request.get_json()
+        if not data or 'titles' not in data:
+            return jsonify({"error": "Missing 'titles' array in request"}), 400
+        
+        from video_processor import cluster_quiz_titles
+        clusters = cluster_quiz_titles(data['titles'])
+        cluster_count = max(clusters) + 1
+        
+        # Generate cluster names with LLM
+        cluster_names = {}
+        gemini = get_gemini_client()
+        
+        if gemini:
+            # Group titles by cluster
+            cluster_titles = {}
+            for idx, cluster_id in enumerate(clusters):
+                if cluster_id not in cluster_titles:
+                    cluster_titles[cluster_id] = []
+                cluster_titles[cluster_id].append(data['titles'][idx])
+            
+            for cluster_id, titles in cluster_titles.items():
+                try:
+                    prompt = f"Give a SHORT 1-2 word category name for these quiz titles. ONLY RETURN THE NAME, NO OTHER TEXT:\n"
+                    prompt += "\n".join([f"- {t}" for t in titles])
+                    
+                    response = gemini.generate_content(prompt)
+                    if response.text:
+                        cluster_names[cluster_id] = response.text.strip().strip('"\'').title()
+                    else:
+                        cluster_names[cluster_id] = f"Cluster {cluster_id + 1}"
+                except:
+                    cluster_names[cluster_id] = f"Cluster {cluster_id + 1}"
+        else:
+            # Fallback if Gemini is not available
+            for c in range(cluster_count):
+                cluster_names[c] = f"Cluster {c + 1}"
+        
+        return jsonify({
+            "clusters": clusters,
+            "count": cluster_count,
+            "names": cluster_names
+        })
+    
+    except Exception as e:
+        print(f"Error clustering quizzes: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Failed to cluster quizzes"}), 500
+
+
 # ==================
 # --- Run the App ---
 # ==================
