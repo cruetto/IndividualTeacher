@@ -756,7 +756,7 @@ def handle_chat():
 # --- Recommendation System ---
 # =============================
 
-from video_processor import generate_embeddings, extract_video_id, search_youtube_videos, process_video
+from video_processor import generate_embeddings
 from database import find_similar_videos, video_exists, add_video_embeddings
 
 @app.route('/api/recommendations', methods=['POST'])
@@ -792,24 +792,6 @@ def get_recommendations():
             recommendations = find_similar_videos(embeddings[idx], limit=4)
             
             print(f"✅ Local database found: {len(recommendations)} good matches")
-            
-            # NOT ENOUGH GOOD RESULTS → GO TO YOUTUBE
-            if len(recommendations) < 2:
-                print(f"⚠️  Not enough good matches. Searching YouTube...")
-                
-                youtube_videos = search_youtube_videos(search_query, limit=2)
-                
-                for video in youtube_videos:
-                    if not video_exists(video['video_id']):
-                        print(f"🚀 Importing new video: {video['video_id']}")
-                        chunks = process_video(video['video_id'])
-                        if chunks:
-                            add_video_embeddings(video['video_id'], chunks[0]['video_title'], chunks)
-                            print(f"✅ Video imported successfully")
-                
-                # Search again with fresh content
-                print(f"🔍 Re-searching database with new content...")
-                recommendations = find_similar_videos(embeddings[idx], limit=4)
             
             # Format for frontend
             formatted_recommendations = []
