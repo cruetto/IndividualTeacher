@@ -46,54 +46,46 @@ CORS(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"]
 )
 
-_gemini_client = None
+_groq_client = None
 
-def get_gemini_client():
+def get_llm_client():
     """
-    Initializes and returns a single instance of the Gemini client.
-    This prevents initialization in the Gunicorn master process.
+    Initializes and returns a single instance of the GROQ client.
     """
-    global _gemini_client
-    if _gemini_client is None:
-        print("--- Initializing Google Gemini client for the first time in this worker ---")
+    global _groq_client
+    if _groq_client is None:
+        print("--- Initializing GROQ Llama 3.3 client ---")
         try:
-            google_api_key = os.environ.get("GOOGLE_API_KEY")
-            if not google_api_key:
-                print("WARNING: GOOGLE_API_KEY is not set.")
+            from langchain_groq import ChatGroq
+            
+            groq_api_key = os.environ.get("GROQ_API_KEY")
+            if not groq_api_key:
+                print("WARNING: GROQ_API_KEY is not set.")
                 return None
             
-            genai.configure(api_key=google_api_key)
-            gemini_generation_config_json = genai.types.GenerationConfig(
-                response_mime_type="application/json"
+            _groq_client = ChatGroq(
+                model="llama-3.3-70b-versatile",
+                temperature=0,
+                api_key=groq_api_key,
+                timeout=30,
+                max_retries=2
             )
-            _gemini_client = genai.GenerativeModel("gemini-2.5-flash")
             
-            print("--- Google Gemini client initialized successfully. ---")
+            print("--- GROQ client initialized successfully. ---")
         except Exception as e:
-            print(f"FATAL: Error initializing Google Gemini client: {e}")
+            print(f"Error initializing GROQ client: {e}")
             return None
-    return _gemini_client
+    return _groq_client
 
 
 print(f"--- FLASK BACKEND: Flask-CORS imported successfully. Version: {flask_cors.__version__} ---")
 print("--- FLASK BACKEND: GLOBAL Flask-CORS initialized. ---")
 
 
-gemini_model = None
-gemini_generation_config_json = None
-try:
-    google_api_key = os.environ.get("GOOGLE_API_KEY")
-    if not google_api_key:
-        print("WARNING: GOOGLE_API_KEY environment variable not set. AI features may be limited.")
-    else:
-        genai.configure(api_key=google_api_key)
-        
-        gemini_generation_config_json = genai.types.GenerationConfig(
-            response_mime_type="application/json"
-        )
+# GROQ generation config for structured JSON output
+from langchain_core.output_parsers import JsonOutputParser
 
-except Exception as e:
-     print(f"Error initializing Google Gemini client: {e}")
+json_parser = JsonOutputParser()
 
 
 # --- Google Client ID Setup ---
@@ -121,6 +113,10 @@ try:
 except Exception as e:
     print(f"FATAL: Could not connect to database on startup: {e}")
     sys.exit(1)
+
+# --- Start background loading of embedding model ---
+from video_processor import load_model_background
+load_model_background()
 
 # --- Flask-Login Setup ---
 login_manager = LoginManager()
@@ -557,8 +553,8 @@ def generate_quiz():
     is_guest = user_db_id is None
     print(f"POST /api/quizzes/generate request received. UserID: {user_db_id} (Guest: {is_guest})")
 
-    gemini_model = get_gemini_client()
-    if not gemini_model:
+    groq = get_llm_client()
+    if not groq:
         return jsonify({"error": "AI service is not configured."}), 503
 
     try:
@@ -573,18 +569,16 @@ def generate_quiz():
             return jsonify({"error": "Invalid 'num_questions' (1-20)."}), 400
 
         prompt = create_quiz_prompt(topic, num_questions)
-        print(f"Sending quiz generation prompt to Gemini for topic: '{topic}'")
+        print(f"Sending quiz generation prompt to GROQ for topic: '{topic}'")
 
-        # --- Call Gemini API ---
+        # --- Call GROQ API ---
         ai_response_content = ""
         try:
-            config_to_use = gemini_generation_config_json
-            response = gemini_model.generate_content(prompt, generation_config=config_to_use)
-            if not response.parts: raise ValueError("AI failed to generate content or was blocked.")
-            ai_response_content = response.text.strip()
-            print("Received quiz generation response from Gemini.")
+            ai_response = groq.invoke(prompt)
+            ai_response_content = ai_response.content
+            print("Received quiz generation response from GROQ.")
         except Exception as ai_error:
-            print(f"Error interacting with Gemini API: {ai_error}"); traceback.print_exc(); user_message="AI service error.";
+            print(f"Error interacting with GROQ API: {ai_error}"); traceback.print_exc(); user_message="AI service error.";
             if "quota" in str(ai_error).lower(): user_message = "AI quota exceeded."
             elif "blocked" in str(ai_error).lower(): user_message = "Content blocked by AI safety filters."
             elif "API key not valid" in str(ai_error): user_message = "AI API key is invalid."
@@ -668,8 +662,8 @@ def generate_quiz():
 def handle_chat():
     """Handles chat messages, providing context to the AI."""
     print("POST /api/chat request received")
-    gemini_model = get_gemini_client()
-    if not gemini_model:
+    groq = get_llm_client()
+    if not groq:
         return jsonify({"error": "AI chat service is not configured."}), 503
 
     try:
@@ -713,32 +707,18 @@ def handle_chat():
         prompt_parts.append("\nAssistant's concise and helpful response:")
         final_prompt = "\n".join(prompt_parts)
 
-        print("\n--- Sending Chat Prompt to Gemini ---")
+        print("\n--- Sending Chat Prompt to GROQ ---")
         print(final_prompt)
         print("-----------------------------------\n")
 
-        # --- Call Gemini API for Text Generation ---
+        # --- Call GROQ API for Text Generation ---
         try:
-            # Use default text generation, no specific JSON config needed for chat
-            response = gemini_model.generate_content(final_prompt)
-            # Check for blocked content or other generation issues
-            if response.parts:
-                ai_reply = response.text
-                print("Received chat reply from Gemini.")
-            else:
-                print("Gemini Error: No chat reply generated or potentially blocked.")
-                error_message = "AI failed to generate a reply."
-                try:
-                    if response.prompt_feedback and response.prompt_feedback.block_reason:
-                         error_message = f"AI reply blocked due to: {response.prompt_feedback.block_reason.name}. Try rephrasing."
-                    elif response.candidates and response.candidates[0].finish_reason != genai.types.Candidate.FinishReason.STOP:
-                         error_message = f"AI reply generation stopped unexpectedly ({response.candidates[0].finish_reason.name})."
-                except Exception as feedback_error:
-                     print(f"Could not parse detailed AI feedback: {feedback_error}")
-                return jsonify({"error": error_message}), 500
+            response = groq.invoke(final_prompt)
+            ai_reply = response.content
+            print("Received chat reply from GROQ.")
 
         except Exception as ai_error:
-             print(f"Error calling Gemini API for chat: {ai_error}")
+             print(f"Error calling GROQ API for chat: {ai_error}")
              traceback.print_exc()
              user_message = f"Failed to get reply from AI service: {ai_error}"
              if "api key" in str(ai_error).lower() or "permission denied" in str(ai_error).lower(): user_message = "AI service authentication failed."
@@ -861,6 +841,62 @@ def get_library_stats():
         return jsonify(stats)
     except Exception as e:
         return jsonify({"error": "Failed to get library stats"}), 500
+
+
+@app.route('/api/cluster-quizzes', methods=['POST'])
+def cluster_quizzes():
+    """
+    Cluster quiz titles using semantic embeddings and K-Means clustering
+    Accepts: JSON array of quiz titles
+    Returns: Array of cluster numbers and automatic cluster names
+    """
+    try:
+        data = request.get_json()
+        if not data or 'titles' not in data:
+            return jsonify({"error": "Missing 'titles' array in request"}), 400
+        
+        from video_processor import cluster_quiz_titles
+        clusters = cluster_quiz_titles(data['titles'])
+        cluster_count = max(clusters) + 1
+        
+        # Generate cluster names with GROQ
+        cluster_names = {}
+        groq = get_llm_client()
+        
+        if groq:
+            # Group titles by cluster
+            cluster_titles = {}
+            for idx, cluster_id in enumerate(clusters):
+                if cluster_id not in cluster_titles:
+                    cluster_titles[cluster_id] = []
+                cluster_titles[cluster_id].append(data['titles'][idx])
+            
+            for cluster_id, titles in cluster_titles.items():
+                try:
+                    prompt = f"Give a VERY SHORT category name for these quiz titles. ONLY RETURN 1 TO 3 WORDS MAXIMUM. ABSOLUTELY NO EXTRA TEXT, NO DASHES, NO PUNCTUATION, JUST THE NAME:\n"
+                    prompt += "\n".join([f"- {t}" for t in titles])
+                    
+                    response = groq.invoke(prompt)
+                    if response.content:
+                        name = response.content.strip().strip('"\'').title()
+                        # Force maximum 3 words - split and take first 3 only
+                        name_words = name.split()
+                        if len(name_words) > 3:
+                            name = ' '.join(name_words[:3])
+                        cluster_names[cluster_id] = name
+                except:
+                    pass
+        
+        return jsonify({
+            "clusters": clusters,
+            "count": cluster_count,
+            "names": cluster_names
+        })
+    
+    except Exception as e:
+        print(f"Error clustering quizzes: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Failed to cluster quizzes"}), 500
 
 
 # ==================

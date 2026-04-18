@@ -15,9 +15,10 @@ frontend:
     npm run dev
 
 backend:
-    Linux: source .venv/bin/activate
-    Windows 10: .venv\Scripts\Activate.ps1
-    python backend/app.py
+    Linux: 
+    cd backend
+    source .venv/bin/activate
+    python3 app.py
 
 
 # First initialization
