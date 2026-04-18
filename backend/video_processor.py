@@ -111,7 +111,7 @@ def run_full_clustering():
         clusters = cluster_quiz_titles(titles)
 
         # Generate names with GROQ
-        from app import get_llm_client
+        from services.llm_service import get_llm_client
         groq = get_llm_client()
         cluster_names = {}
 
