@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 
 import pytest
-from core.database.database import connect_to_db, add_video_embeddings, get_video_count
+from core.database import connect_to_db, add_video_embeddings, get_video_count
 
 
 class TestDatabase:
@@ -39,7 +39,7 @@ class TestDatabase:
         assert count == 1
         
         # Cleanup test data
-        from core.database.database import video_chunks
+        from core.database import video_chunks
         video_chunks.delete_many({'video_id': 'TEST_VIDEO_ID'})
 
 
