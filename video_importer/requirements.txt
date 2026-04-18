@@ -1,0 +1,6 @@
+requests==2.32.4
+pymongo==4.13.2
+sentence-transformers==2.5.1
+python-dotenv==1.1.1
+numpy==1.26.4
+tqdm==4.67.1
