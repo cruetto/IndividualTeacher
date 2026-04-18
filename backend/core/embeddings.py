@@ -96,7 +96,7 @@ def run_full_clustering():
     global clusters, cluster_names
 
     try:
-        from database import get_db
+        from core.database import get_db
         db = get_db()
 
         # Fetch all user quizzes
@@ -111,7 +111,7 @@ def run_full_clustering():
         clusters = cluster_quiz_titles(titles)
 
         # Generate names with GROQ
-        from services.llm_service import get_llm_client
+        from core.llm import get_llm_client
         groq = get_llm_client()
         cluster_names = {}
 

@@ -4,7 +4,6 @@ from config import init_app
 
 from api.auth import auth_routes
 from api.quizzes import quiz_routes
-from api.ai_generator import ai_routes
 from api.chat import chat_routes
 from api.recommendations import recommendation_routes
 
@@ -14,7 +13,6 @@ init_app(app)
 # Register all blueprints
 app.register_blueprint(auth_routes)
 app.register_blueprint(quiz_routes)
-app.register_blueprint(ai_routes)
 app.register_blueprint(chat_routes)
 app.register_blueprint(recommendation_routes)
 

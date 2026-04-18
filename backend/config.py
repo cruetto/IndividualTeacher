@@ -7,7 +7,7 @@ from flask_login import LoginManager, UserMixin
 from bson import ObjectId
 from dotenv import load_dotenv
 
-from database import connect_to_db, get_db
+from core.database import connect_to_db, get_db
 
 load_dotenv()
 
@@ -116,7 +116,7 @@ def init_app(app):
         sys.exit(1)
     
     # Start background loading of embedding model
-    from video_processor import load_model_background
+    from core.embeddings import load_model_background
     load_model_background()
     
     # Flask-Login Setup

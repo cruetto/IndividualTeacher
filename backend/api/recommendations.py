@@ -3,9 +3,9 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from config import get_current_user_db_id
-from video_processor import generate_embeddings, cluster_quiz_titles
-from database import find_similar_videos, video_exists, add_video_embeddings, get_video_count
-from services.llm_service import get_llm_client
+from core.embeddings import generate_embeddings, cluster_quiz_titles
+from core.database import find_similar_videos, video_exists, add_video_embeddings, get_video_count
+from core.llm import get_llm_client
 
 recommendation_routes = Blueprint('recommendations', __name__)
 
@@ -85,8 +85,8 @@ def add_video_to_library():
         if not data or 'video_url' not in data or 'title' not in data:
             return jsonify({"error": "Missing 'video_url' or 'title'"}), 400
         
-        from video_processor import add_youtube_video
-        from video_processor import extract_youtube_video_id
+        from core.embeddings import add_youtube_video
+        from core.embeddings import extract_youtube_video_id
         
         video_id = extract_youtube_video_id(data['video_url'])
         if not video_id:

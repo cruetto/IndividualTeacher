@@ -6,8 +6,8 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import pytest
-from database import connect_to_db, find_similar_videos
-from video_processor import generate_embeddings
+from core.database.database import connect_to_db, find_similar_videos
+from core.embeddings import generate_embeddings
 
 class TestVectorSystem:
     
@@ -37,7 +37,7 @@ class TestVectorSystem:
     
     def test_database_connection(self):
         """Test database connection is working"""
-        from database import get_video_count
+        from core.database.database import get_video_count
         videos = get_video_count()
         
         # Should have all 11 imported videos

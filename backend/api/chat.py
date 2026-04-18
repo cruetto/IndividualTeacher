@@ -1,7 +1,7 @@
 import traceback
 from flask import Blueprint, jsonify, request
 
-from services.llm_service import get_llm_client
+from core.llm import get_llm_client
 
 chat_routes = Blueprint('chat', __name__)
 
