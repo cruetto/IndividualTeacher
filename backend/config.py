@@ -11,7 +11,7 @@ from core.database import connect_to_db, get_db
 
 load_dotenv()
 
-IS_PRODUCTION = os.environ.get('ENVIRONMENT') == 'production' or os.environ.get('FLASK_ENV') == 'production'
+IS_PRODUCTION = os.environ.get('ENVIRONMENT') == 'production'
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 
