@@ -1,0 +1,22 @@
+# ==============================================
+# VIDEO IMPORTER SPECIFIC IGNORES
+# ==============================================
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Environment
+.env
+
+# Data files
+*.jsonl
+*.csv
+*.mp4
+*.webm

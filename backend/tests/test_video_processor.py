@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 
 import pytest
-from video_processor import generate_embeddings, filter_recommendations, RECOMMENDATION_THRESHOLD, MAX_RECOMMENDATIONS
+from core.embeddings import generate_embeddings, filter_recommendations, RECOMMENDATION_THRESHOLD, MAX_RECOMMENDATIONS
 
 
 class TestVideoProcessor:

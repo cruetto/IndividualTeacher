@@ -2,9 +2,9 @@ TODO:
 
     [] End Review doesnt shuffle quizzes
     [] Chat should close when clicking on chat button
-    [] After creating quiz new quiz should be selected in Quiz component
 
-    [] dinamic video search
+
+    [] dinamic video search?
 
     New question types:
         [] multiplechoice
