@@ -33,13 +33,8 @@ def load_model_background():
     def background_loader():
         global model, model_ready, model_loading
         try:
-            print("\n=== Background loading embedding model ===")
-            print("This will happen in parallel while server is running")
-            print("Server will respond to requests immediately while model loads")
             model = SentenceTransformer('all-MiniLM-L6-v2')
             model_ready = True
-            print("Embedding model loaded successfully in background")
-            print("Clustering and recommendation features now active")
             
             # Run automatic clustering in background
             cluster_thread = threading.Thread(target=run_full_clustering, daemon=True)
@@ -51,16 +46,13 @@ def load_model_background():
     
     thread = threading.Thread(target=background_loader, daemon=True)
     thread.start()
-    print("Started background model loading thread")
 
 
 def generate_embeddings(texts):
     """Generate embeddings for list of texts"""
     global model
     if model is None:
-        print("Loading embedding model (all-MiniLM-L6-v2)...")
         model = SentenceTransformer('all-MiniLM-L6-v2')
-        print("Model loaded successfully")
     return model.encode(texts, show_progress_bar=False).tolist()
 
 
@@ -106,7 +98,6 @@ def run_full_clustering():
         if not titles:
             return
 
-        print(f"Running automatic clustering on {len(titles)} user quizzes")
 
         clusters = cluster_quiz_titles(titles)
 
@@ -138,7 +129,6 @@ def run_full_clustering():
                 except:
                     pass
 
-        print("Automatic clustering completed successfully. Clusters ready.")
 
     except Exception as e:
         print(f"Automatic clustering failed: {e}")

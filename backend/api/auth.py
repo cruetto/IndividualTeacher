@@ -24,11 +24,9 @@ def google_callback():
         return jsonify({"error": "Missing credential token."}), 400 
 
     try:
-        print("Attempting to verify Google token...")
         idinfo = id_token.verify_oauth2_token(
             token, google_requests.Request(), GOOGLE_CLIENT_ID
         )
-        print("Token verified successfully.")
 
         db = get_db()
         users_collection = db.users
@@ -54,7 +52,7 @@ def google_callback():
                 }}
             )
             user_data = users_collection.find_one({"_id": user_data['_id']}) 
-            print(f"User logged in: {email} (ID: {user_data['_id']})")
+            print(f"Login: {email}")
         else:
             new_user_doc = {
                 "googleId": google_id,
@@ -67,11 +65,10 @@ def google_callback():
             insert_result = users_collection.insert_one(new_user_doc)
             user_data = new_user_doc
             user_data['_id'] = insert_result.inserted_id 
-            print(f"New user created: {email} (ID: {user_data['_id']})")
+            print(f"New user: {email}")
 
         user_obj = User(user_data)
         login_user(user_obj, remember=True, duration=datetime.timedelta(days=30))
-        print(f"Flask-Login session created for user: {email}")
 
 
         return jsonify({
@@ -97,19 +94,16 @@ def google_callback():
 @auth_routes.route('/api/auth/logout', methods=['POST'])
 @login_required
 def logout():
-    """Logs the current user out by clearing the session."""
     user_email = current_user.email
     logout_user() 
-    print(f"User logged out: {user_email}")
+    print(f"Logout: {user_email}")
     
     return jsonify({"message": "Logout successful"}), 200
 
 
 @auth_routes.route('/api/auth/status', methods=['GET'])
 def auth_status():
-    """Checks if a user is currently logged in via session cookie."""
     if current_user and current_user.is_authenticated:
-        print(f"Auth status check: User '{current_user.email}' is authenticated.")
         return jsonify({
             "isAuthenticated": True,
             "user": {
@@ -120,5 +114,4 @@ def auth_status():
              }
         })
     else:
-         print("Auth status check: No authenticated user.")
          return jsonify({"isAuthenticated": False, "user": None})

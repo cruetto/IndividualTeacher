@@ -27,7 +27,6 @@ def get_recommendations():
         incorrect_questions = data['incorrect_questions']
         all_recommendations = {}
         
-        print(f"Processing {len(incorrect_questions)} incorrect questions")
         
         question_texts = []
         for q in incorrect_questions:
@@ -43,11 +42,9 @@ def get_recommendations():
         for idx, question in enumerate(incorrect_questions):
             question_id = question.get('id')
             
-            print(f"Question: {question.get('question_text', '')[:60]}...")
             
             recommendations = find_similar_videos(embeddings[idx], limit=3)
             
-            print(f"Local database found: {len(recommendations)} good matches")
             
             formatted_recommendations = []
             for rec in recommendations:
@@ -66,7 +63,6 @@ def get_recommendations():
                 'recommendations': formatted_recommendations
             }
             
-            print(f"Final recommendations: {len(formatted_recommendations)}")
         
         return jsonify(all_recommendations)
     
