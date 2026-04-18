@@ -355,10 +355,10 @@ const QuizManager = ({
                         } finally {
                             setIsClustering(false);
                         }
-                    } else {
-                        setClusters(null);
-                        setClusterNames(null);
-                    }
+                   } else {
+                       setClusters(null);
+                       // KEEP cluster names cached for next toggle
+                   }
                 }} 
                 className="small"
             />
