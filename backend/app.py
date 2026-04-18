@@ -19,4 +19,6 @@ app.register_blueprint(recommendation_routes)
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     print(f"--- Starting Flask server on http://0.0.0.0:{port} ---")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    # Never run debug mode in production - uses double memory
+    debug_mode = not IS_PRODUCTION
+    app.run(debug=debug_mode, host='0.0.0.0', port=port, use_reloader=False)
