@@ -1,0 +1,21 @@
+# ==============================================
+# BACKEND SPECIFIC IGNORES
+# ==============================================
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# Environment
+.env
+
+# Logs
+*.log

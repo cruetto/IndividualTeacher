@@ -1,49 +1,22 @@
-# Logs
-frontend/logs
-frontend/*.log
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
-frontend/pnpm-debug.log*
-frontend/lerna-debug.log*
+# ==============================================
+# GLOBAL IGNORES - APPLIES TO ALL PROJECTS
+# ==============================================
 
-# Node modules and build output
-frontend/node_modules/
-frontend/dist/
-frontend/dist-ssr/
-frontend/.vite/
-frontend/*.local
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+IndividualTeacher.code-workspace
 
-# Editor directories and files
-frontend/.vscode/
-!frontend/.vscode/extensions.json
-frontend/.idea/
-frontend/.DS_Store
-frontend/*.suo
-frontend/*.ntvs*
-frontend/*.njsproj
-frontend/*.sln
-frontend/*.sw?
-
-# Frontend environment file
-frontend/.env
-
-# Root-level environment file
-backend/.env
-
-# Backend (Python)
-backend/.venv/
-backend/__pycache__/
-backend/*.pyc
-backend/.pytest_cache/
-
-# OS files (root and everywhere)
+# OS Files
 .DS_Store
 Thumbs.db
 
-# General logs
+# General
 *.log
-
-# RS_vscode folder
-RS_vscode/
 memory-bank/
