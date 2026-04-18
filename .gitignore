@@ -37,6 +37,8 @@ backend/__pycache__/
 backend/*.pyc
 backend/.pytest_cache/
 
+# Video Importer
+video_importer/.env
 # OS files (root and everywhere)
 .DS_Store
 Thumbs.db
@@ -44,6 +46,5 @@ Thumbs.db
 # General logs
 *.log
 
-# RS_vscode folder
-RS_vscode/
+# memory-bank
 memory-bank/
