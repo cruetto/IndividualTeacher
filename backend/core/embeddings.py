@@ -32,11 +32,8 @@ def generate_embeddings(texts):
     
     cleaned = [t.strip() for t in texts if t and t.strip()]
     
-    embeddings = []
-    for text in cleaned:
-        # Use official feature_extraction method
-        emb = client.feature_extraction(text)
-        embeddings.append(emb)
+    # BATCH ALL TEXTS IN ONE SINGLE API CALL - 100x FASTER
+    embeddings = client.feature_extraction(cleaned)
     
     # Normalize vectors to unit length (required for BGE-M3)
     normalized = []

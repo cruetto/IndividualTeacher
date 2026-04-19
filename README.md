@@ -34,13 +34,11 @@ frontend:
 backend:
     cd backend
     python3 -m venv .venv
-    Linux: source .venv/bin/activate
-    Windows 10: .venv\Scripts\Activate.ps1
+    source .venv/bin/activate
     pip install .
 
 video_importer:
     cd video_importer
     python3 -m venv .venv
-    Linux: source .venv/bin/activate
-    Windows 10: .venv\Scripts\Activate.ps1
+    source .venv/bin/activate
     pip install .
