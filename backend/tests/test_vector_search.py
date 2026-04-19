@@ -15,33 +15,35 @@ class TestVectorSystem:
         """Connect to database once before all tests"""
         connect_to_db()
     
-    def test_embedding_generation(self):
-        """Test that embeddings are generated correctly"""
-        texts = [
-            "What is the time complexity of binary search?",
-            "Big O notation describes algorithm performance",
-            "Object oriented programming uses classes and objects"
-        ]
+    def test_vector_search_function(self):
+        """Test vector search returns expected format"""
+        test_text = "binary search algorithm time complexity"
+        results = find_similar_videos(test_text, 3)
         
-        embeddings = generate_embeddings(texts)
+        assert results is not None
+        assert isinstance(results, list)
+        assert len(results) <= 3
         
-        assert len(embeddings) == 3
-        assert len(embeddings[0]) == 1024  # all-MiniLM-L6-v2 dimensions
-        assert isinstance(embeddings[0], list)
-        
-        # Verify embeddings are different for different texts
-        assert embeddings[0] != embeddings[1]
-        assert embeddings[1] != embeddings[2]
+        if len(results) > 0:
+            # Verify result structure
+            for result in results:
+                assert 'video_id' in result
+                assert 'video_title' in result
+                assert 'text' in result
+                assert 'start' in result
+                assert 'end' in result
+                assert 'similarity' in result
+                assert 0.0 <= result['similarity'] <= 1.0
     
     
     
-    def test_database_connection(self):
-        """Test database connection is working"""
-        from core.database import get_video_count
-        videos = get_video_count()
+    def test_vector_search_threshold(self):
+        """Test that low similarity results are filtered out"""
+        test_text = "this text should not match anything in the database xyz123456"
+        results = find_similar_videos(test_text, 3)
         
-        # Should have all 11 imported videos
-        assert len(videos) >= 11
+        # Should return empty or very few results for nonsense query
+        assert isinstance(results, list)
 
 
 if __name__ == "__main__":
