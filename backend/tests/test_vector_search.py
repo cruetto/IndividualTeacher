@@ -26,7 +26,7 @@ class TestVectorSystem:
         embeddings = generate_embeddings(texts)
         
         assert len(embeddings) == 3
-        assert len(embeddings[0]) == 384  # all-MiniLM-L6-v2 dimensions
+        assert len(embeddings[0]) == 1024  # all-MiniLM-L6-v2 dimensions
         assert isinstance(embeddings[0], list)
         
         # Verify embeddings are different for different texts

@@ -99,7 +99,7 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
           borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: "1.5rem", boxShadow: '0 4px 8px rgba(0,0,0,0.2)', zIndex: 1040, color: '#fff',
         }}
-        onClick={() => setShowChat(true)} aria-label="Open Chat"
+        onClick={() => setShowChat(prev => !prev)} aria-label="Toggle Chat"
       > 💬 </Button>
 
       {/* Chat Interface Offcanvas */}

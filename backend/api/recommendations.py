@@ -7,6 +7,10 @@ from core.embeddings import generate_embeddings, cluster_quiz_titles
 from core.database import find_similar_videos, video_exists, add_video_embeddings, get_video_count
 from core.llm import get_llm_client
 
+RECOMMENDATION_THRESHOLD = 0.8
+MAX_RECOMMENDATIONS = 3
+
+
 recommendation_routes = Blueprint('recommendations', __name__)
 
 
@@ -43,7 +47,7 @@ def get_recommendations():
             question_id = question.get('id')
             
             
-            recommendations = find_similar_videos(embeddings[idx], limit=3)
+            recommendations = find_similar_videos(embeddings[idx], limit=MAX_RECOMMENDATIONS, min_score=RECOMMENDATION_THRESHOLD)
             
             
             formatted_recommendations = []

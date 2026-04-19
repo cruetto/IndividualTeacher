@@ -31,7 +31,7 @@ def connect_to_db():
                                           "kind": "vector-ivf",
                                           "numLists": 100,
                                           "similarity": "COS",
-                                          "dimensions": 384
+                                          "dimensions": 1024
                                       })
         except:
             # Index already exists
@@ -59,11 +59,11 @@ def add_video_embeddings(video_id, video_title, chunks):
     
     return len(result.inserted_ids)
 
-def find_similar_videos(embedding, limit=3, min_score=0.80):
+def find_similar_videos(embedding, limit, min_score):
     """
     Find similar video chunks using vector search
-    min_score: 0.80 = 80% similarity minimum (strict quality filter)
-    Returns maximum 3 best matches
+    min_score: 0.0 = NO FILTER, return all matches
+    Set min_score=0 to always return maximum possible results
     """
     if video_chunks is None:
         connect_to_db()

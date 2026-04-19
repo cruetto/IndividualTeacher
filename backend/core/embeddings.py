@@ -1,23 +1,32 @@
 import os
+import requests
 from dotenv import load_dotenv
-import google.generativeai as genai
+import numpy as np
+from huggingface_hub import InferenceClient
 
 # Load environment variables
 load_dotenv()
 
-# Configure Gemini API
-genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
+HF_API_TOKEN = os.environ.get("HF_TOKEN")
+EMBEDDING_MODEL = "BAAI/bge-m3"
+EMBEDDING_DIMENSION = 1024
+
+# Initialize official Hugging Face Inference Client once
+client = InferenceClient(model=EMBEDDING_MODEL, token=HF_API_TOKEN)
 
 cached_clusters = None
 cached_cluster_names = None
 clusters_dirty = True
 quiz_count_when_clustered = 0
 
-RECOMMENDATION_THRESHOLD = 0.8
-MAX_RECOMMENDATIONS = 3
+
 
 
 def generate_embeddings(texts):
+    """
+    Generate embeddings using OFFICIAL Hugging Face InferenceClient
+    Correct supported API method as per documentation
+    """
     if isinstance(texts, str):
         texts = [texts]
     
@@ -25,24 +34,17 @@ def generate_embeddings(texts):
     
     embeddings = []
     for text in cleaned:
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=text,
-            task_type="retrieval_document"
-        )
-        embeddings.append(result['embedding'])
+        # Use official feature_extraction method
+        emb = client.feature_extraction(text)
+        embeddings.append(emb)
     
-    return embeddings
-
-
-def filter_recommendations(results):
-    if not results:
-        return []
+    # Normalize vectors to unit length (required for BGE-M3)
+    normalized = []
+    for emb in embeddings:
+        norm = np.linalg.norm(emb)
+        normalized.append((np.array(emb) / norm).tolist())
     
-    filtered = [r for r in results if r.get('similarity', 0) >= RECOMMENDATION_THRESHOLD]
-    filtered.sort(key=lambda x: x['similarity'], reverse=True)
-    
-    return filtered[:MAX_RECOMMENDATIONS]
+    return normalized
 
 
 clusters = None
@@ -102,7 +104,7 @@ def cluster_quiz_titles(quiz_titles):
     if len(quiz_titles) <= 1:
         return [0] * len(quiz_titles)
     
-    # Step 1: Generate semantic embeddings using Gemini API
+    # Step 1: Generate semantic embeddings using BGE-M3
     embeddings = generate_embeddings(quiz_titles)
     
     # Step 2: Find optimal number of clusters with Elbow Method

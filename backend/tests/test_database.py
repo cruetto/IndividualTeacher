@@ -27,7 +27,7 @@ class TestDatabase:
             'text': 'This is test video content',
             'start': 0.0,
             'end': 10.0,
-            'embedding': [0.1] * 384
+            'embedding': [0.1] * 1024
         }]
         
         # Insert test video
