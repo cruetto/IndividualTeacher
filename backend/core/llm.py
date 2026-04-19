@@ -3,17 +3,17 @@ import json
 import uuid
 from langchain_core.output_parsers import JsonOutputParser
 
-_groq_client = None
+_llm_client = None
 json_parser = JsonOutputParser()
 
 
 def get_llm_client():
     """
-    Initializes and returns a single instance of the GROQ client.
+    Initializes and returns a single instance of the LLM client.
     """
-    global _groq_client
-    if _groq_client is None:
-        print("--- Initializing GROQ Llama 3.3 client ---")
+    global _llm_client
+    if _llm_client is None:
+        print("--- Initializing LLM (Llama 3.3 via Groq) client ---")
         try:
             from langchain_groq import ChatGroq
             
@@ -22,7 +22,7 @@ def get_llm_client():
                 print("WARNING: GROQ_API_KEY is not set.")
                 return None
             
-            _groq_client = ChatGroq(
+            _llm_client = ChatGroq(
                 model="llama-3.3-70b-versatile",
                 temperature=0,
                 api_key=groq_api_key,
@@ -30,11 +30,11 @@ def get_llm_client():
                 max_retries=2
             )
             
-            print("--- GROQ client initialized successfully. ---")
+            print("--- LLM client initialized successfully. ---")
         except Exception as e:
-            print(f"Error initializing GROQ client: {e}")
+            print(f"Error initializing LLM client: {e}")
             return None
-    return _groq_client
+    return _llm_client
 
 
 def create_quiz_prompt(topic: str, num_questions: int) -> str:

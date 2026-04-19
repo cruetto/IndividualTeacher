@@ -128,9 +128,9 @@ def cluster_quizzes():
         cluster_count = max(clusters) + 1
         
         cluster_names = {}
-        groq = get_llm_client()
+        llm_client = get_llm_client()
         
-        if groq:
+        if llm_client:
             cluster_titles = {}
             for idx, cluster_id in enumerate(clusters):
                 if cluster_id not in cluster_titles:
@@ -142,7 +142,7 @@ def cluster_quizzes():
                     prompt = f"Give a VERY SHORT category name for these quiz titles. ONLY RETURN 1 TO 3 WORDS MAXIMUM. ABSOLUTELY NO EXTRA TEXT, NO DASHES, NO PUNCTUATION, JUST THE NAME:\n"
                     prompt += "\n".join([f"- {t}" for t in titles])
                     
-                    response = groq.invoke(prompt)
+                    response = llm_client.invoke(prompt)
                     if response.content:
                         name = response.content.strip().strip('"\'').title()
                         name_words = name.split()

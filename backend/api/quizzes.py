@@ -229,8 +229,8 @@ def generate_quiz():
     is_guest = user_db_id is None
     print(f"POST /api/quizzes/generate request received. UserID: {user_db_id} (Guest: {is_guest})")
 
-    groq = get_llm_client()
-    if not groq:
+    llm_client = get_llm_client()
+    if not llm_client:
         return jsonify({"error": "AI service is not configured."}), 503
 
     try:
@@ -248,7 +248,7 @@ def generate_quiz():
 
         ai_response_content = ""
         try:
-            ai_response = groq.invoke(prompt)
+            ai_response = llm_client.invoke(prompt)
             ai_response_content = ai_response.content
             print("Received quiz generation response from GROQ.")
         except Exception as ai_error:

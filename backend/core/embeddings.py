@@ -73,10 +73,10 @@ def run_full_clustering():
         clusters = cluster_quiz_titles(titles)
 
         from core.llm import get_llm_client
-        groq = get_llm_client()
+        llm_client = get_llm_client()
         cluster_names = {}
 
-        if groq:
+        if llm_client:
             cluster_titles = {}
             for idx, cluster_id in enumerate(clusters):
                 cluster_titles.setdefault(cluster_id, []).append(titles[idx])
@@ -85,7 +85,7 @@ def run_full_clustering():
                 try:
                     prompt = f"Give a VERY SHORT category name for these quiz titles. ONLY RETURN 1 TO 3 WORDS MAXIMUM. ABSOLUTELY NO EXTRA TEXT, NO DASHES, NO PUNCTUATION, JUST THE NAME:\n"
                     prompt += "\n".join([f"- {t}" for t in titles_in_cluster])
-                    response = groq.invoke(prompt)
+                    response = llm_client.invoke(prompt)
                     if response.content:
                         name = response.content.strip().strip('"\'').title()
                         name_words = name.split()

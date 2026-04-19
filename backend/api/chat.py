@@ -9,8 +9,8 @@ chat_routes = Blueprint('chat', __name__)
 @chat_routes.route('/api/chat', methods=['POST'])
 def handle_chat():
     """Handles chat messages, providing context to the AI."""
-    groq = get_llm_client()
-    if not groq:
+    llm_client = get_llm_client()
+    if not llm_client:
         return jsonify({"error": "AI chat service is not configured."}), 503
 
     try:
@@ -55,7 +55,7 @@ def handle_chat():
 
 
         try:
-            response = groq.invoke(final_prompt)
+            response = llm_client.invoke(final_prompt)
             ai_reply = response.content
 
         except Exception as ai_error:
