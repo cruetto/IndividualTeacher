@@ -1,46 +1,38 @@
-import threading
-from sentence_transformers import SentenceTransformer
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
 
-_model = None
-_model_lock = threading.Lock()
+# Load environment variables
+load_dotenv()
+
+# Configure Gemini API
+genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
 
 cached_clusters = None
 cached_cluster_names = None
 clusters_dirty = True
+quiz_count_when_clustered = 0
 
 RECOMMENDATION_THRESHOLD = 0.8
 MAX_RECOMMENDATIONS = 3
 
 
-def load_model_background():
-    def loader():
-        get_model()
-        run_full_clustering()
-    
-    thread = threading.Thread(target=loader, daemon=True)
-    thread.start()
-
-
-def get_model():
-    global _model
-    
-    if _model is None:
-        with _model_lock:
-            if _model is None:
-                _model = SentenceTransformer('all-MiniLM-L6-v2')
-    
-    return _model
-
-
 def generate_embeddings(texts):
-    model = get_model()
-    
     if isinstance(texts, str):
         texts = [texts]
     
     cleaned = [t.strip() for t in texts if t and t.strip()]
     
-    return model.encode(cleaned, show_progress_bar=False).tolist()
+    embeddings = []
+    for text in cleaned:
+        result = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=text,
+            task_type="retrieval_document"
+        )
+        embeddings.append(result['embedding'])
+    
+    return embeddings
 
 
 def filter_recommendations(results):
@@ -58,7 +50,7 @@ cluster_names = None
 
 
 def run_full_clustering():
-    global clusters, cluster_names
+    global clusters, cluster_names, quiz_count_when_clustered
 
     try:
         from core.database import get_db
@@ -68,6 +60,10 @@ def run_full_clustering():
         titles = [q['title'] for q in quizzes]
 
         if not titles:
+            return
+            
+        # Only run clustering if number of quizzes changed
+        if quiz_count_when_clustered == len(titles) and clusters is not None:
             return
 
         clusters = cluster_quiz_titles(titles)
@@ -92,8 +88,11 @@ def run_full_clustering():
                         if len(name_words) > 3:
                             name = ' '.join(name_words[:3])
                         cluster_names[cluster_id] = name
-                except:
+                except Exception:
                     pass
+        
+        # Remember how many quizzes we clustered
+        quiz_count_when_clustered = len(titles)
 
     except Exception:
         pass
@@ -103,7 +102,7 @@ def cluster_quiz_titles(quiz_titles):
     if len(quiz_titles) <= 1:
         return [0] * len(quiz_titles)
     
-    # Step 1: Generate semantic embeddings using existing model
+    # Step 1: Generate semantic embeddings using Gemini API
     embeddings = generate_embeddings(quiz_titles)
     
     # Step 2: Find optimal number of clusters with Elbow Method

@@ -115,50 +115,26 @@ def get_library_stats():
 @recommendation_routes.route('/api/cluster-quizzes', methods=['POST'])
 def cluster_quizzes():
     """
-    Cluster quiz titles using semantic embeddings and K-Means clustering
-    Accepts: JSON array of quiz titles
-    Returns: Array of cluster numbers and automatic cluster names
+    Return precomputed cached clusters
+    Clusters are already calculated once at server startup
     """
     try:
-        data = request.get_json()
-        if not data or 'titles' not in data:
-            return jsonify({"error": "Missing 'titles' array in request"}), 400
+        from core.embeddings import clusters, cluster_names
         
-        clusters = cluster_quiz_titles(data['titles'])
-        cluster_count = max(clusters) + 1
-        
-        cluster_names = {}
-        llm_client = get_llm_client()
-        
-        if llm_client:
-            cluster_titles = {}
-            for idx, cluster_id in enumerate(clusters):
-                if cluster_id not in cluster_titles:
-                    cluster_titles[cluster_id] = []
-                cluster_titles[cluster_id].append(data['titles'][idx])
-            
-            for cluster_id, titles in cluster_titles.items():
-                try:
-                    prompt = f"Give a VERY SHORT category name for these quiz titles. ONLY RETURN 1 TO 3 WORDS MAXIMUM. ABSOLUTELY NO EXTRA TEXT, NO DASHES, NO PUNCTUATION, JUST THE NAME:\n"
-                    prompt += "\n".join([f"- {t}" for t in titles])
-                    
-                    response = llm_client.invoke(prompt)
-                    if response.content:
-                        name = response.content.strip().strip('"\'').title()
-                        name_words = name.split()
-                        if len(name_words) > 3:
-                            name = ' '.join(name_words[:3])
-                        cluster_names[cluster_id] = name
-                except:
-                    pass
+        if clusters is None or cluster_names is None:
+            return jsonify({
+                "clusters": [],
+                "count": 0,
+                "names": {}
+            })
         
         return jsonify({
             "clusters": clusters,
-            "count": cluster_count,
+            "count": max(clusters) + 1,
             "names": cluster_names
         })
     
     except Exception as e:
-        print(f"Error clustering quizzes: {e}")
+        print(f"Error getting clusters: {e}")
         traceback.print_exc()
-        return jsonify({"error": "Failed to cluster quizzes"}), 500
+        return jsonify({"error": "Failed to get clusters"}), 500

@@ -190,7 +190,7 @@ const QuizManager = ({
             .map(([clusterId, quizzes]) => (
               <div key={`cluster-${type}-${clusterId}`}>
                 <h6 className="mt-2 mb-1 text-primary small fw-bold">
-                  📁 {clusterNames ? clusterNames[parseInt(clusterId)] : `Cluster ${parseInt(clusterId) + 1}`}
+                  {clusterNames ? clusterNames[parseInt(clusterId)] : `Cluster ${parseInt(clusterId) + 1}`}
                   <span className="text-muted fw-normal ms-1">({quizzes.length} quizzes)</span>
                 </h6>
                 <ListGroup variant="flush" className="mb-2">

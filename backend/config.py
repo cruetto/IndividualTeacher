@@ -115,9 +115,7 @@ def init_app(app):
         print(f"FATAL: Could not connect to database on startup: {e}")
         sys.exit(1)
     
-    # Start background loading of embedding model
-    from core.embeddings import load_model_background
-    load_model_background()
+
     
     # Flask-Login Setup
     login_manager.init_app(app)
