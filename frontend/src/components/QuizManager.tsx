@@ -69,6 +69,44 @@ const QuizManager = ({
   const [clusters, setClusters] = useState<number[] | null>(null);
   const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
 
+  // Auto-recluster whenever active quiz list changes
+  useEffect(() => {
+    // Skip if clustering is not enabled
+    if (!clusterizeEnabled) return;
+    
+    // Skip if empty list
+    const activeList = currentUser ? userQuizList : guestQuizList;
+    if (activeList.length === 0) {
+      setClusters(null);
+      return;
+    }
+
+    // Debounced cluster run
+    const timer = setTimeout(async () => {
+      setIsClustering(true);
+      
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ titles: activeList.map(q => q.title) })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setClusters(data.clusters);
+          setClusterNames(data.names);
+        }
+      } catch (err) {
+        console.error("Background clustering failed:", err);
+      } finally {
+        setIsClustering(false);
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [currentUser, userQuizList, guestQuizList, clusterizeEnabled]);
+
   // --- Handlers ---
   const handleCloseOffcanvas = () => setShowOffcanvas(false);
   const handleShowOffcanvas = () => setShowOffcanvas(true);
@@ -327,38 +365,14 @@ const QuizManager = ({
                 type="switch" id="clusterize-check" label={isClustering ? "Clustering quizzes..." : "Clusterize Quizzes"}
                 checked={clusterizeEnabled} 
                 disabled={isClustering}
-                onChange={async () => {
+                onChange={() => {
                     const newState = !clusterizeEnabled;
                     setClusterizeEnabled(newState);
                     
-                    if (newState) {
-                        setIsClustering(true);
-                        setClusters(null);
-                        
-                        // Cluster ONLY user/guest quizzes, exclude public quizzes
-                        const allQuizzes = currentUser ? userQuizList : guestQuizList;
-                        
-                        try {
-                            const response = await fetch('http://localhost:5001/api/cluster-quizzes', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ titles: allQuizzes.map(q => q.title) })
-                            });
-                            
-                            if (response.ok) {
-                                const data = await response.json();
-                                setClusters(data.clusters);
-                                setClusterNames(data.names);
-                            }
-                        } catch (err) {
-                            console.error("Clustering failed:", err);
-                        } finally {
-                            setIsClustering(false);
-                        }
-                   } else {
+                    if (!newState) {
                        setClusters(null);
-                       // KEEP cluster names cached for next toggle
-                   }
+                       // Keep cluster names cached for next toggle
+                    }
                 }} 
                 className="small"
             />
