@@ -676,7 +676,7 @@ function App() {
                 </Modal>
 
                 {/* Main Content Area */}
-                <div className="main-content-area" style={{ paddingTop: '5rem', paddingLeft: '2rem', paddingRight: '2rem' }}>
+                <div className="main-content-area" style={{ paddingTop: '4rem', paddingLeft: '2rem', paddingRight: '2rem', paddingBottom: '8rem' }}>
 
                     {/* Loading Indicator: Show during initial load OR subsequent list refreshes */}
                     {(isLoadingInitialData || isLoadingQuizLists) && (

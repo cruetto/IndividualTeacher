@@ -27,7 +27,7 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
                 width: '160%', 
                 marginLeft: 'auto',
                 marginRight: 'auto',
-                transform: 'translateX(calc(-50% + 300px))' // ✅ Perfect centering
+                transform: 'translateX(calc(-50% + 300px))'
             }}
         >
             {recommendations.recommendations.length === 0 ? (
