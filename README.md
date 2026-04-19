@@ -15,7 +15,6 @@ frontend:
     npm run dev
 
 backend:
-    Linux: 
     cd backend
     source .venv/bin/activate
     python3 app.py
