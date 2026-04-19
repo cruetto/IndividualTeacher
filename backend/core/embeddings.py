@@ -100,10 +100,10 @@ def run_full_clustering():
         
         # Remember how many quizzes we clustered
         quiz_count_when_clustered = len(titles)
-        print(f"[CLUSTER] ✅ Full clustering process completed successfully")
+        print(f"[CLUSTER] Full clustering process completed successfully")
 
     except Exception as e:
-        print(f"[CLUSTER] ❌ FAILED: {str(e)}")
+        print(f"[CLUSTER] FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
 
@@ -134,7 +134,7 @@ def cluster_quiz_titles(quiz_titles):
         deltas = np.diff(wcss)
         relative_improvement = deltas / wcss[:-1]
         
-        candidates = np.where(relative_improvement < 0.15)[0]
+        candidates = np.where(relative_improvement < 0.25)[0]
         
         if len(candidates) > 0:
             optimal_k = candidates[0] + 2
@@ -142,8 +142,8 @@ def cluster_quiz_titles(quiz_titles):
             second_deltas = np.diff(deltas)
             optimal_k = np.argmax(second_deltas) + 2
         
-        min_clusters = max(2, int(len(quiz_titles) / 8))
-        max_clusters = min(max_k, int(len(quiz_titles) / 3))
+        min_clusters = max(2, int(len(quiz_titles) / 6))
+        max_clusters = min(max_k, int(len(quiz_titles) / 2.5))
         
         optimal_k = max(optimal_k, min_clusters)
         optimal_k = min(optimal_k, max_clusters)
