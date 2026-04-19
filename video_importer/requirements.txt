@@ -1,8 +1,0 @@
-pymongo[srv]
-python-dotenv
-youtube-transcript-api
-tqdm
-numpy
-
-# Local BGE-M3 embedding model
-sentence-transformers

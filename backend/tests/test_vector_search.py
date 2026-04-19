@@ -18,7 +18,8 @@ class TestVectorSystem:
     def test_vector_search_function(self):
         """Test vector search returns expected format"""
         test_text = "binary search algorithm time complexity"
-        results = find_similar_videos(test_text, 3)
+        embedding = generate_embeddings(test_text)[0]
+        results = find_similar_videos(embedding, 3, 0.7)
         
         assert results is not None
         assert isinstance(results, list)
@@ -32,15 +33,16 @@ class TestVectorSystem:
                 assert 'text' in result
                 assert 'start' in result
                 assert 'end' in result
-                assert 'similarity' in result
-                assert 0.0 <= result['similarity'] <= 1.0
+                assert 'score' in result
+                assert 0.0 <= result['score'] <= 1.0
     
     
     
     def test_vector_search_threshold(self):
         """Test that low similarity results are filtered out"""
         test_text = "this text should not match anything in the database xyz123456"
-        results = find_similar_videos(test_text, 3)
+        embedding = generate_embeddings(test_text)[0]
+        results = find_similar_videos(embedding, 3, 0.95)
         
         # Should return empty or very few results for nonsense query
         assert isinstance(results, list)

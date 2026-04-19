@@ -19,6 +19,12 @@ backend:
     source .venv/bin/activate
     python3 app.py
 
+video_importer:
+    cd video_importer
+    source .venv/bin/activate
+    python3 fetch_transcripts.py
+    python3 process_embeddings.py
+
 
 # First initialization
 frontend:
@@ -30,4 +36,11 @@ backend:
     python3 -m venv .venv
     Linux: source .venv/bin/activate
     Windows 10: .venv\Scripts\Activate.ps1
-    pip install -r requirements.txt
+    pip install .
+
+video_importer:
+    cd video_importer
+    python3 -m venv .venv
+    Linux: source .venv/bin/activate
+    Windows 10: .venv\Scripts\Activate.ps1
+    pip install .

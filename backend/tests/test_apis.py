@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 
 import pytest
 from core.llm import get_llm_client, create_quiz_prompt, parse_ai_quiz_response
-from core.embeddings import generate_embeddings, test_embedding_connection
+from core.embeddings import generate_embeddings
 
 
 class TestExternalAPIs:
@@ -19,8 +19,10 @@ class TestExternalAPIs:
     
     def test_huggingface_embedding_connection(self):
         """Test that we can connect to HuggingFace embedding API"""
-        result = test_embedding_connection()
-        assert result is True
+        test_text = "connection test"
+        embedding = generate_embeddings([test_text])
+        assert embedding is not None
+        assert len(embedding) == 1
     
     def test_huggingface_embedding_dimensions(self):
         """Test embeddings are generated correctly with 1024 dimensions"""

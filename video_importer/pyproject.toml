@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "individual-teacher-video-importer"
+version = "1.0.0"
+description = "Video transcript importer and embedding processor"
+requires-python = ">=3.10"
+dependencies = [
+  "pymongo[srv]>=4.7.0",
+  "python-dotenv>=1.0.1",
+  "youtube-transcript-api>=0.6.2",
+  "tqdm>=4.66.0",
+  "numpy>=1.26.4,<2.0",
+  "sentence-transformers>=2.7.0"
+]
+
+[tool.setuptools]
+py_modules = ["fetch_transcripts", "process_embeddings"]
