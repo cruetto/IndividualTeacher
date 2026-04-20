@@ -62,7 +62,7 @@ def get_available_groq_models():
 # NEW V2 QUIZ GENERATION SYSTEM - TWO STEP PIPELINE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def create_fact_extraction_prompt(source: str, requested_fact_count: int) -> str:
+def create_fact_extraction_prompt(source: str, requested_fact_count: int, language: str) -> str:
     """Prompt for step 1: Extract or generate facts sorted by importance"""
     return f"""
 Extract all important facts and knowledge points from the following content.
@@ -78,6 +78,7 @@ Instructions:
 4. Each fact must be a single clear standalone statement
 5. Every fact must contain actual testable knowledge
 6. Do not add any explanations, comments or extra text
+7. **ALL OUTPUT MUST BE IN THE SELECTED LANGUAGE: {language}**
 
 Return ONLY a JSON object with single key "facts" containing array of strings.
 Example output:
@@ -91,7 +92,7 @@ Example output:
 """.strip()
 
 
-def create_question_from_fact_prompt(fact: str, difficulty: int) -> str:
+def create_question_from_fact_prompt(fact: str, difficulty: int, language: str) -> str:
     """Prompt for step 2: Generate single question from one individual fact"""
     difficulty_rules = [
         "Distractors are obviously wrong, very different from correct answer",
@@ -111,6 +112,7 @@ Instructions:
 - Difficulty level {difficulty}/5: {difficulty_rules}
 - Do not mention the word "fact" in the question
 - Create natural question that tests knowledge of this fact
+- **ALL OUTPUT MUST BE IN THE SELECTED LANGUAGE: {language}**
 
 Return ONLY a JSON object following this structure:
 {{
@@ -125,20 +127,20 @@ Return ONLY a JSON object following this structure:
 """.strip()
 
 
-def extract_facts(source: str, target_question_count: int | None = None) -> list[str]:
+def extract_facts(source: str, target_question_count: int | None = None, language: str = "English") -> list[str]:
     """Extract facts from source text or topic name"""
     
     if target_question_count is None:
         # Auto mode: Extract EVERYTHING, maximum possible facts
-        requested_facts = 150
+        requested_facts = 100
     else:
         requested_facts = max(int(target_question_count * 1.6), 8)
     
-    llm = get_llm_client(temperature=0.2)
+    llm = get_llm_client(model="llama-3.3-70b-versatile", temperature=0.1, top_p=0.8)
     if not llm:
         raise RuntimeError("LLM client not available")
     
-    prompt = create_fact_extraction_prompt(source, requested_facts)
+    prompt = create_fact_extraction_prompt(source, requested_facts, language)
     response = llm.invoke(prompt)
     
     content = response.content.strip()
@@ -171,13 +173,13 @@ def extract_facts(source: str, target_question_count: int | None = None) -> list
         return facts[:requested_facts]
 
 
-def generate_question_for_fact(fact: str, difficulty: int = 3) -> dict:
+def generate_question_for_fact(fact: str, difficulty: int = 3, language: str = "English") -> dict:
     """Generate single question from one individual fact"""
-    llm = get_llm_client(temperature=0.7)
+    llm = get_llm_client(model="llama-3.3-70b-versatile", temperature=0.7, top_p=0.9)
     if not llm:
         raise RuntimeError("LLM client not available")
     
-    prompt = create_question_from_fact_prompt(fact, difficulty)
+    prompt = create_question_from_fact_prompt(fact, difficulty, language)
     response = llm.invoke(prompt)
     
     content = response.content.strip()
@@ -195,7 +197,7 @@ def generate_question_for_fact(fact: str, difficulty: int = 3) -> dict:
     return question_data
 
 
-def generate_quiz(source: str, question_count: int | None = None, difficulty: int = 3) -> list[dict]:
+def generate_quiz(source: str, question_count: int | None = None, difficulty: int = 3, language: str = "English") -> list[dict]:
     """
     Two Step Quiz Generation Pipeline
     
@@ -207,20 +209,31 @@ def generate_quiz(source: str, question_count: int | None = None, difficulty: in
     Returns:
         List of quiz questions
     """
-    facts = extract_facts(source, question_count)
-    
+    facts = extract_facts(source, question_count, language)
+
     print(f"\nExtracted {len(facts)} total facts from source")
-    
+
     if question_count is not None:
         facts = facts[:question_count]
         print(f"Selected top {len(facts)} best facts for quiz")
-    
+
     questions = []
-    for fact in facts:
+
+    print(f"\nGenerating questions:")
+    print(f"0/{len(facts)} [{' ' * 50}] 0%", end='\r')
+
+    for idx, fact in enumerate(facts):
         try:
-            questions.append(generate_question_for_fact(fact, difficulty))
+            questions.append(generate_question_for_fact(fact, difficulty, language))
         except Exception:
-            continue
+            pass
+
+        progress = int((idx + 1) / len(facts) * 50)
+        percentage = int((idx + 1) / len(facts) * 100)
+        bar = '█' * progress + ' ' * (50 - progress)
+        print(f"{idx + 1}/{len(facts)} [{bar}] {percentage}%", end='\r')
+
+    print(f"\n✅ Completed. Generated {len(questions)} questions")
     
     return questions
 

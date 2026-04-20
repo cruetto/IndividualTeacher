@@ -1,11 +1,20 @@
-TODO:
-
-    [] End Review doesnt shuffle quizzes
-    [] Chat should close when clicking on chat button
 
 
-    [] dinamic video search?
-
+NEXT:
+    [] Clustering broken
+    [] Async LLM calls
     New question types:
         [] multiplechoice
         [] skipped words in text
+
+
+SOMEDAY/Maybe:
+    [] End Review doesnt shuffle quizzes
+
+
+
+    [] Understand fallback of llm structured outputs 
+    [] dinamic video search?
+    [] Advanced settings for each llm: extractor and creator
+    [] API key holder from groq 
+    [] Implement other models/services to never pay a cent

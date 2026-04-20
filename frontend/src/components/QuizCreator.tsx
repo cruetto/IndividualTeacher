@@ -20,26 +20,12 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [pdfFile, setPdfFile] = useState<File | null>(null);
-    const [showAdvanced, setShowAdvanced] = useState(false);
     const [difficulty, setDifficulty] = useState(3);
-    const [temperature, setTemperature] = useState(0.7);
-    const [topP, setTopP] = useState(0.9);
-    const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
-    const [availableModels, setAvailableModels] = useState<{id: string, name: string, context_window: number, max_completion_tokens: number}[]>([]);
+    const [language, setLanguage] = useState("Lithuanian");
+    const [generationProgress, setGenerationProgress] = useState(0);
+    const [generationStatus, setGenerationStatus] = useState("");
     const navigate = useNavigate();
 
-    // Fetch available models on component mount
-    useEffect(() => {
-        const fetchModels = async () => {
-            try {
-                const response = await axios.get(`${API_BASE_URL}/api/models`);
-                setAvailableModels(response.data);
-            } catch (e) {
-                console.log("Could not fetch models, using default");
-            }
-        };
-        fetchModels();
-    }, []);
 
     const handleGenerateQuiz = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault(); // Prevent default form submission
@@ -49,7 +35,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
         // Basic validation
         if (!title.trim()) { setError("Please provide a title."); return; }
         if (!pdfFile && !topic.trim()) { setError("Please provide either topic instructions or upload a PDF document."); return; }
-        if (numQuestions !== null && (numQuestions < 1 || numQuestions > 150)) { setError("Number of questions must be between 1 and 150."); return; }
+        if (numQuestions !== null && (numQuestions < 1 || numQuestions > 100)) { setError("Number of questions must be between 1 and 100."); return; }
 
         setIsLoading(true);
 
@@ -62,6 +48,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 formData.append('pdf', pdfFile);
                 formData.append('title', title.trim());
                 formData.append('topic', topic.trim());
+                formData.append('language', language);
                 if (numQuestions !== null) {
                     formData.append('num_questions', numQuestions.toString());
                 }
@@ -80,9 +67,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                     topic: topic.trim(),
                     num_questions: numQuestions,
                     difficulty: difficulty,
-                    temperature: temperature,
-                    top_p: topP,
-                    model: selectedModel
+                    language: language
                 });
             }
 
@@ -196,89 +181,57 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                                 disabled={isLoading}
                             >
                                 <option value="auto">Auto (Extract all facts)</option>
-                                {Array.from({length: 150}, (_, i) => i + 1).map(n => (
+                                {Array.from({length: 100}, (_, i) => i + 1).map(n => (
                                     <option key={n} value={n}>{n} Questions</option>
                                 ))}
                             </Form.Select>
                         </Form.Group>
 
-                        {/* Advanced Settings Toggle */}
-                        <div className="mb-3 text-center">
-                            <Button 
-                                variant="link" 
-                                onClick={() => setShowAdvanced(!showAdvanced)}
+                        <Form.Group className="mb-3">
+                            <Form.Label>Difficulty: {difficulty}/5</Form.Label>
+                            <Form.Range
+                                value={difficulty}
+                                onChange={(e) => setDifficulty(parseInt(e.target.value))}
+                                min={1}
+                                max={5}
                                 disabled={isLoading}
-                                className="text-muted"
-                                style={{textDecoration: 'none'}}
+                            />
+                            <div className="d-flex justify-content-between text-muted small">
+                                <span>Very Easy</span>
+                                <span>Normal</span>
+                                <span>Expert</span>
+                            </div>
+                        </Form.Group>
+
+                        <Form.Group className="mb-3" controlId="language">
+                            <Form.Label>Output Language</Form.Label>
+                            <Form.Select
+                                value={language}
+                                onChange={(e) => setLanguage(e.target.value)}
+                                disabled={isLoading}
                             >
-                                {showAdvanced ? '▼ Hide Advanced Settings' : '▶ Show Advanced Settings'}
-                            </Button>
-                        </div>
+                                <option value="Lithuanian">Lietuvių</option>
+                                <option value="English">English</option>
+                            </Form.Select>
+                        </Form.Group>
 
-                        {/* Advanced Settings Collapsible */}
-                        {showAdvanced && (
-                            <div className="border rounded p-3 mb-3 bg-light">
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Difficulty: {difficulty}/5</Form.Label>
-                                    <Form.Range
-                                        value={difficulty}
-                                        onChange={(e) => setDifficulty(parseInt(e.target.value))}
-                                        min={1}
-                                        max={5}
-                                        disabled={isLoading}
-                                    />
-                                    <div className="d-flex justify-content-between text-muted small">
-                                        <span>Very Easy</span>
-                                        <span>Normal</span>
-                                        <span>Expert</span>
+                        {isLoading && (
+                            <div className="mb-3">
+                                <div className="d-flex justify-content-between mb-1">
+                                    <span className="text-muted small">{generationStatus}</span>
+                                    <span className="text-muted small">{generationProgress}%</span>
+                                </div>
+                                <div className="progress" style={{height: '8px'}}>
+                                    <div 
+                                        className="progress-bar progress-bar-striped progress-bar-animated" 
+                                        role="progressbar" 
+                                        style={{width: `${generationProgress}%`}}
+                                        aria-valuenow={generationProgress}
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                    >
                                     </div>
-                                </Form.Group>
-
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Temperature: {temperature.toFixed(2)}</Form.Label>
-                                    <Form.Range
-                                        value={temperature}
-                                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                                        min={0}
-                                        max={1.2}
-                                        step={0.05}
-                                        disabled={isLoading}
-                                    />
-                                    <div className="d-flex justify-content-between text-muted small">
-                                        <span>Precise</span>
-                                        <span>Balanced</span>
-                                        <span>Creative</span>
-                                    </div>
-                                </Form.Group>
-
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Top P: {topP.toFixed(2)}</Form.Label>
-                                    <Form.Range
-                                        value={topP}
-                                        onChange={(e) => setTopP(parseFloat(e.target.value))}
-                                        min={0}
-                                        max={1}
-                                        step={0.05}
-                                        disabled={isLoading}
-                                    />
-                                </Form.Group>
-
-                                {availableModels.length > 0 && (
-                                    <Form.Group className="mb-3">
-                                        <Form.Label>AI Model</Form.Label>
-                                        <Form.Select
-                                            value={selectedModel}
-                                            onChange={(e) => setSelectedModel(e.target.value)}
-                                            disabled={isLoading}
-                                        >
-                                            {availableModels.map((m) => (
-                                                <option key={m.id} value={m.id}>
-                                                    {m.name} | {(m.context_window/1000).toFixed(0)}k | {m.max_completion_tokens ? Math.round(m.max_completion_tokens/1000) + 'k output' : ''}
-                                                </option>
-                                            ))}
-                                        </Form.Select>
-                                    </Form.Group>
-                                )}
+                                </div>
                             </div>
                         )}
 

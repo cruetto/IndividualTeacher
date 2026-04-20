@@ -244,20 +244,14 @@ def generate_quiz_endpoint():
         topic = data['topic']
         num_questions = data.get('num_questions', 5)
         difficulty = data.get('difficulty', 3)
-        temperature = data.get('temperature', 0.7)
-        top_p = data.get('top_p', 0.9)
-        model = data.get('model', "llama-3.3-70b-versatile")
+        language = data.get('language', "English")
         
         if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
             return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
         if not isinstance(difficulty, int) or not 1 <= difficulty <= 5:
             return jsonify({"error": "Invalid 'difficulty' (1-5)."}), 400
-        if not isinstance(temperature, (int, float)) or not 0 <= temperature <= 1.2:
-            return jsonify({"error": "Invalid 'temperature' (0-1.2)."}), 400
-        if not isinstance(top_p, (int, float)) or not 0 <= top_p <= 1.0:
-            return jsonify({"error": "Invalid 'top_p' (0-1.0)."}), 400
 
-        questions = generate_quiz(topic, num_questions, difficulty)
+        questions = generate_quiz(topic, num_questions, difficulty, language)
         print(f"Successfully generated {len(questions)} questions.")
 
         quiz_document_data = {
@@ -351,7 +345,8 @@ def generate_quiz_from_pdf():
         # Combine topic instructions with document content
         full_content = f"TOPIC / INSTRUCTIONS: {topic}\n\nDOCUMENT CONTENT:\n{document_text}"
         
-        questions = generate_quiz(full_content, num_questions)
+        language = request.form.get('language', "English")
+        questions = generate_quiz(full_content, num_questions, 3, language)
         print(f"Successfully generated {len(questions)} questions from PDF.")
 
         quiz_document_data = {
