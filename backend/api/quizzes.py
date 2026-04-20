@@ -6,7 +6,7 @@ from flask_login import login_required
 from bson import ObjectId
 
 from config import get_db, get_current_user_db_id
-from core.llm import get_llm_client, create_quiz_prompt, parse_ai_quiz_response
+from core.llm import get_llm_client, generate_quiz
 
 quiz_routes = Blueprint('quizzes', __name__)
 
@@ -230,7 +230,7 @@ def get_models():
 
 
 @quiz_routes.route('/api/quizzes/generate', methods=['POST'])
-def generate_quiz():
+def generate_quiz_endpoint():
     """Generates a quiz using AI. Saves to DB only if user is logged in."""
     user_db_id = get_current_user_db_id() 
     is_guest = user_db_id is None
@@ -257,38 +257,14 @@ def generate_quiz():
         if not isinstance(top_p, (int, float)) or not 0 <= top_p <= 1.0:
             return jsonify({"error": "Invalid 'top_p' (0-1.0)."}), 400
 
-        llm_client = get_llm_client(model=model, temperature=temperature, top_p=top_p)
-        if not llm_client:
-            return jsonify({"error": "AI service is not configured."}), 503
-
-        prompt = create_quiz_prompt(topic, num_questions, difficulty)
-        print(f"Sending quiz generation prompt to GROQ for topic: '{topic}', difficulty: {difficulty}")
-
-        ai_response_content = ""
-        try:
-            ai_response = llm_client.invoke(prompt)
-            ai_response_content = ai_response.content
-            print("Received quiz generation response from GROQ.")
-        except Exception as ai_error:
-            print(f"Error interacting with GROQ API: {ai_error}"); traceback.print_exc(); user_message="AI service error.";
-            if "quota" in str(ai_error).lower(): user_message = "AI quota exceeded."
-            elif "blocked" in str(ai_error).lower(): user_message = "Content blocked by AI safety filters."
-            elif "API key not valid" in str(ai_error): user_message = "AI API key is invalid."
-            return jsonify({"error": user_message}), 503
-
-        try:
-            validated_questions = parse_ai_quiz_response(ai_response_content)
-            print(f"Successfully parsed {len(validated_questions)} questions.")
-        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
-            print(f"Error parsing/validating AI response: {parse_error}");
-            print(f"--- Raw AI Response ---\n{ai_response_content[:1000]}{'...' if len(ai_response_content) > 1000 else ''}\n--- End Raw Response ---");
-            return jsonify({"error": f"Received invalid data format from AI generator: {parse_error}"}), 500
+        questions = generate_quiz(topic, num_questions, difficulty)
+        print(f"Successfully generated {len(questions)} questions.")
 
         quiz_document_data = {
             "id": str(uuid.uuid4()),
             "title": req_title,
             "topic": topic,
-            "questions": validated_questions,
+            "questions": questions,
         }
 
         if not is_guest:
@@ -370,36 +346,15 @@ def generate_quiz_from_pdf():
         # Combine topic instructions with document content
         full_content = f"TOPIC / INSTRUCTIONS: {topic}\n\nDOCUMENT CONTENT:\n{document_text}"
         
-        # Generate quiz using our existing pipeline
-        prompt = create_quiz_prompt(full_content, num_questions)
-        print(f"Sending document + topic to GROQ for quiz generation")
-
-        ai_response_content = ""
-        try:
-            ai_response = llm_client.invoke(prompt)
-            ai_response_content = ai_response.content
-            print("Received quiz generation response from GROQ.")
-        except Exception as ai_error:
-            print(f"Error interacting with GROQ API: {ai_error}"); traceback.print_exc(); user_message="AI service error.";
-            if "quota" in str(ai_error).lower(): user_message = "AI quota exceeded."
-            elif "blocked" in str(ai_error).lower(): user_message = "Content blocked by AI safety filters."
-            elif "API key not valid" in str(ai_error): user_message = "AI API key is invalid."
-            return jsonify({"error": user_message}), 503
-
-        try:
-            validated_questions = parse_ai_quiz_response(ai_response_content)
-            print(f"Successfully parsed {len(validated_questions)} questions.")
-        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
-            print(f"Error parsing/validating AI response: {parse_error}");
-            print(f"--- Raw AI Response ---\n{ai_response_content[:1000]}{'...' if len(ai_response_content) > 1000 else ''}\n--- End Raw Response ---");
-            return jsonify({"error": f"Received invalid data format from AI generator: {parse_error}"}), 500
+        questions = generate_quiz(full_content, num_questions)
+        print(f"Successfully generated {len(questions)} questions from PDF.")
 
         quiz_document_data = {
             "id": str(uuid.uuid4()),
             "title": title,
             "topic": topic,
             "source_document": pdf_file.filename,
-            "questions": validated_questions,
+            "questions": questions,
         }
 
         if not is_guest:

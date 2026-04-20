@@ -58,92 +58,181 @@ def get_available_groq_models():
     ]
 
 
-def create_quiz_prompt(topic: str, num_questions: int, difficulty: int = 3) -> str:
-    """Generates the precise prompt for the LLMs, requesting JSON output for quizzes."""
-    
-    difficulty_text = ["very easy, basic beginner level", 
-                       "easy", 
-                       "moderate standard difficulty", 
-                       "hard, more challenging questions", 
-                       "very hard, expert level advanced questions"][difficulty-1]
-    
-    prompt = f"""
-Generate exactly {num_questions} multiple-choice quiz questions about the topic: "{topic}".
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# NEW V2 QUIZ GENERATION SYSTEM - TWO STEP PIPELINE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Difficulty level: {difficulty}/5 - {difficulty_text}
+def create_fact_extraction_prompt(source: str, requested_fact_count: int) -> str:
+    """Prompt for step 1: Extract or generate facts sorted by importance"""
+    return f"""
+Extract all important facts and knowledge points from the following content.
+If the content is just a topic name instead of text, generate accurate general knowledge facts about that topic.
 
-Format the output STRICTLY as a single JSON object. This object must contain ONE key named "questions".
-The value of "questions" MUST be a JSON array where each element is a question object.
+Content:
+{source}
 
-Each question object in the array MUST have the following fields:
-- "id": A unique UUID string generated for this question (e.g., using Python's uuid.uuid4()).
-- "type": The string "multiple_choice".
-- "question_text": The string containing the question text.
-- "answers": A JSON array containing exactly 4 answer option objects.
+Instructions:
+1. Generate EXACTLY {requested_fact_count} facts
+2. Extract EVERY SINGLE testable fact from this content
+3. Do not skip anything. Extract absolutely everything that can be tested.
+4. Each fact must be a single clear standalone statement
+5. Every fact must contain actual testable knowledge
+6. Do not add any explanations, comments or extra text
 
-Each answer option object in the "answers" array MUST have the following fields:
-- "id": A unique UUID string generated for this answer option (e.g., using Python's uuid.uuid4()).
-- "answer_text": The string containing the answer text.
-- "is_correct": A boolean value (true for ONLY ONE answer per question, false for the others).
-
-Example of a single question object within the "questions" array:
+Return ONLY a JSON object with single key "facts" containing array of strings.
+Example output:
 {{
-  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "type": "multiple_choice",
-  "question_text": "What is the powerhouse of the cell?",
-  "answers": [
-    {{ "id": "a1b2c3d4-...", "answer_text": "Nucleus", "is_correct": false }},
-    {{ "id": "e5f6g7h8-...", "answer_text": "Ribosome", "is_correct": false }},
-    {{ "id": "i9j0k1l2-...", "answer_text": "Mitochondrion", "is_correct": true }},
-    {{ "id": "m3n4o5p6-...", "answer_text": "Chloroplast", "is_correct": false }}
+  "facts": [
+    "First most important fact here",
+    "Second important fact here",
+    "Third fact here"
   ]
 }}
+""".strip()
 
-Ensure the entire output is only the valid JSON object with the "questions" key and its array value. Do not include any other text, explanations, or markdown formatting like ```json ... ```. Generate unique UUIDs for all 'id' fields.
-"""
-    return prompt.strip()
 
+def create_question_from_fact_prompt(fact: str, difficulty: int) -> str:
+    """Prompt for step 2: Generate single question from one individual fact"""
+    difficulty_rules = [
+        "Distractors are obviously wrong, very different from correct answer",
+        "Distractors are clearly incorrect",
+        "Distractors are somewhat plausible",
+        "Distractors are very similar to correct answer, hard to distinguish",
+        "Distractors are almost identical, expert level difficulty"
+    ][difficulty-1]
+
+    return f"""
+Create one multiple choice question based EXCLUSIVELY on this fact:
+FACT: {fact}
+
+Instructions:
+- The correct answer must be exactly the information from the fact
+- Create 3 incorrect distractors following difficulty rules
+- Difficulty level {difficulty}/5: {difficulty_rules}
+- Do not mention the word "fact" in the question
+- Create natural question that tests knowledge of this fact
+
+Return ONLY a JSON object following this structure:
+{{
+  "question_text": "Question text here",
+  "answers": [
+    {{ "answer_text": "Correct answer", "is_correct": true }},
+    {{ "answer_text": "Distractor 1", "is_correct": false }},
+    {{ "answer_text": "Distractor 2", "is_correct": false }},
+    {{ "answer_text": "Distractor 3", "is_correct": false }}
+  ]
+}}
+""".strip()
+
+
+def extract_facts(source: str, target_question_count: int | None = None) -> list[str]:
+    """Extract facts from source text or topic name"""
+    
+    if target_question_count is None:
+        # Auto mode: Extract EVERYTHING, maximum possible facts
+        requested_facts = 150
+    else:
+        requested_facts = max(int(target_question_count * 1.6), 8)
+    
+    llm = get_llm_client(temperature=0.2)
+    if not llm:
+        raise RuntimeError("LLM client not available")
+    
+    prompt = create_fact_extraction_prompt(source, requested_facts)
+    response = llm.invoke(prompt)
+    
+    content = response.content.strip()
+    
+    print(f"\n📥 LLM RESPONSE FOR FACTS:\n{repr(content[:1500])}\n{'...' if len(content) > 1500 else ''}\n")
+    
+    # Fix for markdown code blocks with no language specified
+    if content.startswith("```"):
+        content = content.split('\n', 1)[1] if '\n' in content else content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    
+    if content.startswith("```json"): content = content[7:]
+    if content.endswith("```"): content = content[:-3]
+    
+    content = content.strip()
+    
+    try:
+        result = json.loads(content)
+        return result.get("facts", [])
+    except json.JSONDecodeError:
+        # Fallback: extract facts manually if LLM didn't return proper JSON
+        print(f"⚠️ JSON decode failed, attempting manual fact extraction")
+        facts = []
+        for line in content.split('\n'):
+            line = line.strip()
+            if line and not line.startswith('{') and not line.startswith('[') and not line.startswith('}') and not line.startswith(']'):
+                if len(line) > 20:
+                    facts.append(line)
+        return facts[:requested_facts]
+
+
+def generate_question_for_fact(fact: str, difficulty: int = 3) -> dict:
+    """Generate single question from one individual fact"""
+    llm = get_llm_client(temperature=0.7)
+    if not llm:
+        raise RuntimeError("LLM client not available")
+    
+    prompt = create_question_from_fact_prompt(fact, difficulty)
+    response = llm.invoke(prompt)
+    
+    content = response.content.strip()
+    if content.startswith("```json"): content = content[7:]
+    if content.endswith("```"): content = content[:-3]
+    
+    question_data = json.loads(content.strip())
+    
+    question_data['id'] = str(uuid.uuid4())
+    question_data['type'] = 'multiple_choice'
+    
+    for answer in question_data['answers']:
+        answer['id'] = str(uuid.uuid4())
+    
+    return question_data
+
+
+def generate_quiz(source: str, question_count: int | None = None, difficulty: int = 3) -> list[dict]:
+    """
+    Two Step Quiz Generation Pipeline
+    
+    Args:
+        source: PDF text OR topic name
+        question_count: Number of questions, or None for Auto detect mode
+        difficulty: 1-5 difficulty level (applies to distractors)
+    
+    Returns:
+        List of quiz questions
+    """
+    facts = extract_facts(source, question_count)
+    
+    print(f"\n✅ Extracted {len(facts)} total facts from source")
+    
+    if question_count is not None:
+        facts = facts[:question_count]
+        print(f"✅ Selected top {len(facts)} best facts for quiz")
+    
+    questions = []
+    for fact in facts:
+        try:
+            questions.append(generate_question_for_fact(fact, difficulty))
+        except Exception:
+            continue
+    
+    return questions
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# BACKWARDS COMPATIBILITY STUBS - FOR EXISTING API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def create_quiz_prompt(topic: str, num_questions: int, difficulty: int = 3) -> str:
+    """Deprecated: Stub for backwards compatibility"""
+    return ""
 
 def parse_ai_quiz_response(ai_response_content):
-    """Parse and validate AI quiz generation response"""
-    if ai_response_content.startswith("```json"): ai_response_content = ai_response_content[7:]
-    if ai_response_content.endswith("```"): ai_response_content = ai_response_content[:-3]
-    ai_response_content = ai_response_content.strip();
-    
-    if not ai_response_content: 
-        raise ValueError("AI returned empty content after cleaning.")
-    
-    generated_data = json.loads(ai_response_content)
-    
-    if not isinstance(generated_data, dict) or "questions" not in generated_data: 
-        raise ValueError("AI JSON missing 'questions' key.")
-    
-    if not isinstance(generated_data["questions"], list): 
-        raise ValueError("'questions' field is not a list.")
-
-    validated_questions = []
-    
-    for q_data in generated_data["questions"]:
-         if isinstance(q_data, dict) and q_data.get("question_text") and isinstance(q_data.get("answers"), list):
-              q_data['id'] = q_data.get('id', str(uuid.uuid4())); 
-              q_data['type'] = q_data.get('type', 'multiple_choice'); 
-              q_data['question_text'] = str(q_data['question_text'])
-              
-              valid_answers = []
-              for a_data in q_data.get("answers", []):
-                  if isinstance(a_data, dict) and a_data.get("answer_text") is not None:
-                      a_data['id'] = a_data.get('id', str(uuid.uuid4())); 
-                      a_data['answer_text'] = str(a_data['answer_text']); 
-                      a_data['is_correct'] = bool(a_data.get('is_correct', False))
-                      valid_answers.append(a_data)
-              
-              q_data['answers'] = valid_answers
-              if valid_answers: 
-                  validated_questions.append(q_data)
-         else: 
-             print(f"Warning: Skipping invalid question structure: {q_data}")
-    
-    if not validated_questions: 
-        raise ValueError("AI response parsed, but no valid questions found after validation.")
-    
-    return validated_questions
+    """Deprecated: Stub for backwards compatibility"""
+    return []
