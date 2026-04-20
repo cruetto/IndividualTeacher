@@ -143,7 +143,7 @@ def extract_facts(source: str, target_question_count: int | None = None) -> list
     
     content = response.content.strip()
     
-    print(f"\n📥 LLM RESPONSE FOR FACTS:\n{repr(content[:1500])}\n{'...' if len(content) > 1500 else ''}\n")
+    print(f"\nLLM RESPONSE FOR FACTS:\n{repr(content[:1500])}\n{'...' if len(content) > 1500 else ''}\n")
     
     # Fix for markdown code blocks with no language specified
     if content.startswith("```"):
@@ -209,11 +209,11 @@ def generate_quiz(source: str, question_count: int | None = None, difficulty: in
     """
     facts = extract_facts(source, question_count)
     
-    print(f"\n✅ Extracted {len(facts)} total facts from source")
+    print(f"\nExtracted {len(facts)} total facts from source")
     
     if question_count is not None:
         facts = facts[:question_count]
-        print(f"✅ Selected top {len(facts)} best facts for quiz")
+        print(f"Selected top {len(facts)} best facts for quiz")
     
     questions = []
     for fact in facts:
@@ -225,14 +225,3 @@ def generate_quiz(source: str, question_count: int | None = None, difficulty: in
     return questions
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# BACKWARDS COMPATIBILITY STUBS - FOR EXISTING API
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-def create_quiz_prompt(topic: str, num_questions: int, difficulty: int = 3) -> str:
-    """Deprecated: Stub for backwards compatibility"""
-    return ""
-
-def parse_ai_quiz_response(ai_response_content):
-    """Deprecated: Stub for backwards compatibility"""
-    return []

@@ -248,8 +248,8 @@ def generate_quiz_endpoint():
         top_p = data.get('top_p', 0.9)
         model = data.get('model', "llama-3.3-70b-versatile")
         
-        if not isinstance(num_questions, int) or not 1 <= num_questions <= 20:
-            return jsonify({"error": "Invalid 'num_questions' (1-20)."}), 400
+        if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
+            return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
         if not isinstance(difficulty, int) or not 1 <= difficulty <= 5:
             return jsonify({"error": "Invalid 'difficulty' (1-5)."}), 400
         if not isinstance(temperature, (int, float)) or not 0 <= temperature <= 1.2:
@@ -329,10 +329,15 @@ def generate_quiz_from_pdf():
 
         title = request.form.get('title', pdf_file.filename.rsplit('.', 1)[0])
         topic = request.form.get('topic', '')
-        num_questions = int(request.form.get('num_questions', 5))
+        num_questions = request.form.get('num_questions')
+        if num_questions is not None:
+            num_questions = int(num_questions)
+        else:
+            # None = Auto mode (extract all facts)
+            num_questions = None
         
-        if not isinstance(num_questions, int) or not 1 <= num_questions <= 20:
-            return jsonify({"error": "Invalid 'num_questions' (1-20)."}), 400
+        if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
+            return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
 
         print(f"Processing PDF file: {pdf_file.filename} with topic: {topic}")
         

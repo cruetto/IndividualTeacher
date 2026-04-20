@@ -15,7 +15,7 @@ interface Props {
 const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
     const [title, setTitle] = useState('');
     const [topic, setTopic] = useState('');
-    const [numQuestions, setNumQuestions] = useState(5); // Default number
+    const [numQuestions, setNumQuestions] = useState<number | null>(5); // null = Auto mode
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -49,7 +49,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
         // Basic validation
         if (!title.trim()) { setError("Please provide a title."); return; }
         if (!pdfFile && !topic.trim()) { setError("Please provide either topic instructions or upload a PDF document."); return; }
-        if (numQuestions < 1 || numQuestions > 20) { setError("Number of questions must be between 1 and 20."); return; }
+        if (numQuestions !== null && (numQuestions < 1 || numQuestions > 150)) { setError("Number of questions must be between 1 and 150."); return; }
 
         setIsLoading(true);
 
@@ -62,7 +62,9 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 formData.append('pdf', pdfFile);
                 formData.append('title', title.trim());
                 formData.append('topic', topic.trim());
-                formData.append('num_questions', numQuestions.toString());
+                if (numQuestions !== null) {
+                    formData.append('num_questions', numQuestions.toString());
+                }
 
                 response = await axios.post<QuizData>(
                     `${API_BASE_URL}/api/quizzes/generate-from-pdf`,
@@ -181,15 +183,23 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
 
                         <Form.Group className="mb-3" controlId="numQuestions">
                             <Form.Label>Number of Questions</Form.Label>
-                            <Form.Control
-                                type="number"
-                                value={numQuestions}
-                                onChange={(e) => setNumQuestions(parseInt(e.target.value, 10) || 1)}
-                                min="1"
-                                max="20" // Keep reasonable limits
-                                required
+                            <Form.Select
+                                value={numQuestions === null ? "auto" : numQuestions}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "auto") {
+                                        setNumQuestions(null);
+                                    } else {
+                                        setNumQuestions(parseInt(val, 10));
+                                    }
+                                }}
                                 disabled={isLoading}
-                            />
+                            >
+                                <option value="auto">Auto (Extract all facts)</option>
+                                {Array.from({length: 150}, (_, i) => i + 1).map(n => (
+                                    <option key={n} value={n}>{n} Questions</option>
+                                ))}
+                            </Form.Select>
                         </Form.Group>
 
                         {/* Advanced Settings Toggle */}
