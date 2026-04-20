@@ -222,16 +222,19 @@ def get_quiz_by_id(quiz_id):
         return jsonify({"error": "Failed to fetch quiz data"}), 500
 
 
+@quiz_routes.route('/api/models', methods=['GET'])
+def get_models():
+    """Return list of available Groq models"""
+    from core.llm import get_available_groq_models
+    return jsonify(get_available_groq_models())
+
+
 @quiz_routes.route('/api/quizzes/generate', methods=['POST'])
 def generate_quiz():
     """Generates a quiz using AI. Saves to DB only if user is logged in."""
     user_db_id = get_current_user_db_id() 
     is_guest = user_db_id is None
     print(f"POST /api/quizzes/generate request received. UserID: {user_db_id} (Guest: {is_guest})")
-
-    llm_client = get_llm_client()
-    if not llm_client:
-        return jsonify({"error": "AI service is not configured."}), 503
 
     try:
         data = request.get_json()
@@ -240,11 +243,26 @@ def generate_quiz():
         req_title = data['title']
         topic = data['topic']
         num_questions = data.get('num_questions', 5)
+        difficulty = data.get('difficulty', 3)
+        temperature = data.get('temperature', 0.7)
+        top_p = data.get('top_p', 0.9)
+        model = data.get('model', "llama-3.3-70b-versatile")
+        
         if not isinstance(num_questions, int) or not 1 <= num_questions <= 20:
             return jsonify({"error": "Invalid 'num_questions' (1-20)."}), 400
+        if not isinstance(difficulty, int) or not 1 <= difficulty <= 5:
+            return jsonify({"error": "Invalid 'difficulty' (1-5)."}), 400
+        if not isinstance(temperature, (int, float)) or not 0 <= temperature <= 1.2:
+            return jsonify({"error": "Invalid 'temperature' (0-1.2)."}), 400
+        if not isinstance(top_p, (int, float)) or not 0 <= top_p <= 1.0:
+            return jsonify({"error": "Invalid 'top_p' (0-1.0)."}), 400
 
-        prompt = create_quiz_prompt(topic, num_questions)
-        print(f"Sending quiz generation prompt to GROQ for topic: '{topic}'")
+        llm_client = get_llm_client(model=model, temperature=temperature, top_p=top_p)
+        if not llm_client:
+            return jsonify({"error": "AI service is not configured."}), 503
+
+        prompt = create_quiz_prompt(topic, num_questions, difficulty)
+        print(f"Sending quiz generation prompt to GROQ for topic: '{topic}', difficulty: {difficulty}")
 
         ai_response_content = ""
         try:

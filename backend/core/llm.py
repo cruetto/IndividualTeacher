@@ -7,40 +7,70 @@ _llm_client = None
 json_parser = JsonOutputParser()
 
 
-def get_llm_client():
+def get_llm_client(model: str = "llama-3.3-70b-versatile", temperature: float = 0.7, top_p: float = 0.9):
     """
-    Initializes and returns a single instance of the LLM client.
+    Returns LLM client with configurable parameters.
     """
-    global _llm_client
-    if _llm_client is None:
-        print("--- Initializing LLM (Llama 3.3 via Groq) client ---")
-        try:
-            from langchain_groq import ChatGroq
-            
-            groq_api_key = os.environ.get("GROQ_API_KEY")
-            if not groq_api_key:
-                print("WARNING: GROQ_API_KEY is not set.")
-                return None
-            
-            _llm_client = ChatGroq(
-                model="llama-3.3-70b-versatile",
-                temperature=0,
-                api_key=groq_api_key,
-                timeout=30,
-                max_retries=2
-            )
-            
-            print("--- LLM client initialized successfully. ---")
-        except Exception as e:
-            print(f"Error initializing LLM client: {e}")
+    try:
+        from langchain_groq import ChatGroq
+        
+        groq_api_key = os.environ.get("GROQ_API_KEY")
+        if not groq_api_key:
+            print("WARNING: GROQ_API_KEY is not set.")
             return None
-    return _llm_client
+        
+        return ChatGroq(
+            model=model,
+            temperature=temperature,
+            model_kwargs={
+                "top_p": top_p
+            },
+            api_key=groq_api_key,
+            timeout=30,
+            max_retries=2
+        )
+    except Exception as e:
+        print(f"Error initializing LLM client: {e}")
+        return None
 
 
-def create_quiz_prompt(topic: str, num_questions: int) -> str:
+def get_available_groq_models():
+    """Curated list of FREE working models only - no dynamic API calls"""
+    return [
+        {
+            "id": "llama-3.3-70b-versatile",
+            "name": "Meta / Llama 3.3 70B Versatile",
+            "context_window": 131072,
+            "max_completion_tokens": 32768
+        },
+        {
+            "id": "llama-3.1-8b-instant",
+            "name": "Meta / Llama 3.1 8B Instant",
+            "context_window": 131072,
+            "max_completion_tokens": 131072
+        },
+        {
+            "id": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "name": "Meta / Llama 4 Scout 17B",
+            "context_window": 131072,
+            "max_completion_tokens": 8192
+        }
+    ]
+
+
+def create_quiz_prompt(topic: str, num_questions: int, difficulty: int = 3) -> str:
     """Generates the precise prompt for the LLMs, requesting JSON output for quizzes."""
+    
+    difficulty_text = ["very easy, basic beginner level", 
+                       "easy", 
+                       "moderate standard difficulty", 
+                       "hard, more challenging questions", 
+                       "very hard, expert level advanced questions"][difficulty-1]
+    
     prompt = f"""
 Generate exactly {num_questions} multiple-choice quiz questions about the topic: "{topic}".
+
+Difficulty level: {difficulty}/5 - {difficulty_text}
 
 Format the output STRICTLY as a single JSON object. This object must contain ONE key named "questions".
 The value of "questions" MUST be a JSON array where each element is a question object.

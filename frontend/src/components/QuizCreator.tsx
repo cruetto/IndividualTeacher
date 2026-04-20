@@ -1,5 +1,5 @@
 // frontend/src/components/QuizCreator.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -20,8 +20,26 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [pdfFile, setPdfFile] = useState<File | null>(null);
-    const [mode, setMode] = useState<'text' | 'pdf'>('text');
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [difficulty, setDifficulty] = useState(3);
+    const [temperature, setTemperature] = useState(0.7);
+    const [topP, setTopP] = useState(0.9);
+    const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+    const [availableModels, setAvailableModels] = useState<{id: string, name: string, context_window: number, max_completion_tokens: number}[]>([]);
     const navigate = useNavigate();
+
+    // Fetch available models on component mount
+    useEffect(() => {
+        const fetchModels = async () => {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/api/models`);
+                setAvailableModels(response.data);
+            } catch (e) {
+                console.log("Could not fetch models, using default");
+            }
+        };
+        fetchModels();
+    }, []);
 
     const handleGenerateQuiz = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault(); // Prevent default form submission
@@ -59,6 +77,10 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                     title: title.trim(),
                     topic: topic.trim(),
                     num_questions: numQuestions,
+                    difficulty: difficulty,
+                    temperature: temperature,
+                    top_p: topP,
+                    model: selectedModel
                 });
             }
 
@@ -169,6 +191,86 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                                 disabled={isLoading}
                             />
                         </Form.Group>
+
+                        {/* Advanced Settings Toggle */}
+                        <div className="mb-3 text-center">
+                            <Button 
+                                variant="link" 
+                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                disabled={isLoading}
+                                className="text-muted"
+                                style={{textDecoration: 'none'}}
+                            >
+                                {showAdvanced ? '▼ Hide Advanced Settings' : '▶ Show Advanced Settings'}
+                            </Button>
+                        </div>
+
+                        {/* Advanced Settings Collapsible */}
+                        {showAdvanced && (
+                            <div className="border rounded p-3 mb-3 bg-light">
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Difficulty: {difficulty}/5</Form.Label>
+                                    <Form.Range
+                                        value={difficulty}
+                                        onChange={(e) => setDifficulty(parseInt(e.target.value))}
+                                        min={1}
+                                        max={5}
+                                        disabled={isLoading}
+                                    />
+                                    <div className="d-flex justify-content-between text-muted small">
+                                        <span>Very Easy</span>
+                                        <span>Normal</span>
+                                        <span>Expert</span>
+                                    </div>
+                                </Form.Group>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Temperature: {temperature.toFixed(2)}</Form.Label>
+                                    <Form.Range
+                                        value={temperature}
+                                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                                        min={0}
+                                        max={1.2}
+                                        step={0.05}
+                                        disabled={isLoading}
+                                    />
+                                    <div className="d-flex justify-content-between text-muted small">
+                                        <span>Precise</span>
+                                        <span>Balanced</span>
+                                        <span>Creative</span>
+                                    </div>
+                                </Form.Group>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Top P: {topP.toFixed(2)}</Form.Label>
+                                    <Form.Range
+                                        value={topP}
+                                        onChange={(e) => setTopP(parseFloat(e.target.value))}
+                                        min={0}
+                                        max={1}
+                                        step={0.05}
+                                        disabled={isLoading}
+                                    />
+                                </Form.Group>
+
+                                {availableModels.length > 0 && (
+                                    <Form.Group className="mb-3">
+                                        <Form.Label>AI Model</Form.Label>
+                                        <Form.Select
+                                            value={selectedModel}
+                                            onChange={(e) => setSelectedModel(e.target.value)}
+                                            disabled={isLoading}
+                                        >
+                                            {availableModels.map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name} | {(m.context_window/1000).toFixed(0)}k | {m.max_completion_tokens ? Math.round(m.max_completion_tokens/1000) + 'k output' : ''}
+                                                </option>
+                                            ))}
+                                        </Form.Select>
+                                    </Form.Group>
+                                )}
+                            </div>
+                        )}
 
                         <div className="d-grid"> {/* Makes button full width */}
                             <Button variant="primary" type="submit" disabled={isLoading}>
