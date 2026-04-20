@@ -52,33 +52,28 @@ def run_full_clustering():
     global clusters, cluster_names, quiz_count_when_clustered
 
     try:
-        print(f"[CLUSTER] Starting clustering process...")
+        print(f"Starting clustering...")
         from core.database import get_db
         db = get_db()
 
         quizzes = list(db.quizzes.find({"userId": {"$ne": None}}))
         titles = [q['title'] for q in quizzes]
-        print(f"[CLUSTER] Found {len(titles)} user quizzes")
 
         if not titles:
-            print(f"[CLUSTER] No quizzes found, exiting clustering")
-            return
+            return 0
             
         # Only run clustering if number of quizzes changed
         if quiz_count_when_clustered == len(titles) and clusters is not None:
-            print(f"[CLUSTER] No changes in quiz count ({len(titles)}), skipping clustering")
-            return
+            return len(set(clusters))
 
-        print(f"[CLUSTER] Generating embeddings and running clustering...")
         clusters = cluster_quiz_titles(titles)
-        print(f"[CLUSTER] Clustering completed, found {len(set(clusters))} clusters")
+        cluster_count = len(set(clusters))
 
         from core.llm import get_llm_client
         llm_client = get_llm_client()
         cluster_names = {}
 
         if llm_client:
-            print(f"[CLUSTER] Generating cluster names with LLM...")
             cluster_titles = {}
             for idx, cluster_id in enumerate(clusters):
                 cluster_titles.setdefault(cluster_id, []).append(titles[idx])
@@ -94,16 +89,17 @@ def run_full_clustering():
                         if len(name_words) > 3:
                             name = ' '.join(name_words[:3])
                         cluster_names[cluster_id] = name
-                        print(f"[CLUSTER] Cluster {cluster_id} named: {name}")
                 except Exception as e:
-                    print(f"[CLUSTER] Warning: Failed to name cluster {cluster_id}: {e}")
+                    pass
         
         # Remember how many quizzes we clustered
         quiz_count_when_clustered = len(titles)
-        print(f"[CLUSTER] Full clustering process completed successfully")
+        print(f"Clustering completed, {cluster_count} clusters created")
+        
+        return cluster_count
 
     except Exception as e:
-        print(f"[CLUSTER] FAILED: {str(e)}")
+        print(f"Clustering FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
 

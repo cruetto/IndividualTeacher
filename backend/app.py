@@ -26,12 +26,10 @@ def trigger_clustering_lazy():
     def run_clustering_background():
         time.sleep(5)  # Wait 5 seconds to let server fully initialize, port bind, Gunicorn accept worker
         try:
-            print("\n[LAZY CLUSTER] Starting background clustering initialization after server is ready...")
             from core.embeddings import run_full_clustering
             run_full_clustering()
-            print("[LAZY CLUSTER] ✅ Clustering initialization completed successfully")
         except Exception as e:
-            print(f"[LAZY CLUSTER] ❌ Clustering initialization failed: {e}")
+            print(f"Clustering failed: {e}")
     
     thread = threading.Thread(target=run_clustering_background, daemon=True)
     thread.start()

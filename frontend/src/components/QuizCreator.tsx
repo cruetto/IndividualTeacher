@@ -19,6 +19,8 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [mode, setMode] = useState<'text' | 'pdf'>('text');
     const navigate = useNavigate();
 
     const handleGenerateQuiz = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -28,20 +30,37 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
 
         // Basic validation
         if (!title.trim()) { setError("Please provide a title."); return; }
-        if (!topic.trim()) { setError("Please provide a topic."); return; }
+        if (!pdfFile && !topic.trim()) { setError("Please provide either topic instructions or upload a PDF document."); return; }
         if (numQuestions < 1 || numQuestions > 20) { setError("Number of questions must be between 1 and 20."); return; }
 
         setIsLoading(true);
 
         try {
-            console.log(`Sending request to generate quiz: Title='${title}', Topic='${topic}', NumQuestions=${numQuestions}`);
+            let response;
 
-            // Make POST request to the backend endpoint
-            const response = await axios.post<QuizData>(`${API_BASE_URL}/api/quizzes/generate`, {
-                title: title.trim(),
-                topic: topic.trim(),
-                num_questions: numQuestions,
-            });
+            if (pdfFile) {
+                console.log(`Generating quiz with topic + PDF: ${pdfFile.name}`);
+                const formData = new FormData();
+                formData.append('pdf', pdfFile);
+                formData.append('title', title.trim());
+                formData.append('topic', topic.trim());
+                formData.append('num_questions', numQuestions.toString());
+
+                response = await axios.post<QuizData>(
+                    `${API_BASE_URL}/api/quizzes/generate-from-pdf`,
+                    formData,
+                    { headers: { 'Content-Type': 'multipart/form-data' } }
+                );
+            } else {
+                console.log(`Sending request to generate quiz: Title='${title}', Topic='${topic}', NumQuestions=${numQuestions}`);
+
+                // Make POST request to the backend endpoint
+                response = await axios.post<QuizData>(`${API_BASE_URL}/api/quizzes/generate`, {
+                    title: title.trim(),
+                    topic: topic.trim(),
+                    num_questions: numQuestions,
+                });
+            }
 
             const newQuizData = response.data; // The backend returns the created quiz
             console.log("Quiz generated successfully by backend:", newQuizData);
@@ -86,6 +105,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                     {successMessage && <Alert variant="success">{successMessage}</Alert>}
 
                     <Form onSubmit={handleGenerateQuiz}>
+
                         <Form.Group className="mb-3" controlId="quizTitle">
                             <Form.Label>Quiz Title</Form.Label>
                             <Form.Control
@@ -98,22 +118,42 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                             />
                         </Form.Group>
 
-                        <Form.Group className="mb-3" controlId="quizTopic">
-                            <Form.Label>Topic for AI</Form.Label>
-                            <Form.Control
-                                type="text"
-                                as="textarea"
-                                rows={3}
-                                placeholder="e.g., Planets, orbits, Kepler's laws"
-                                value={topic}
-                                onChange={(e) => setTopic(e.target.value)}
-                                required
-                                disabled={isLoading}
-                            />
-                            <Form.Text className="text-muted">
-                                Be reasonably specific for better results.
-                            </Form.Text>
-                        </Form.Group>
+        <Form.Group className="mb-3" controlId="quizTopic">
+            <Form.Label>Topic / Instructions</Form.Label>
+            <Form.Control
+                type="text"
+                as="textarea"
+                rows={3}
+                placeholder="Describe what should the quiz be about. You can also upload a PDF document below."
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                disabled={isLoading}
+            />
+            <Form.Text className="text-muted">
+                Optional: Instructions, focus areas or additional context. You can leave this empty if only using PDF.
+            </Form.Text>
+        </Form.Group>
+
+        <Form.Group className="mb-3" controlId="pdfFile">
+            <Form.Label>PDF Document (Optional)</Form.Label>
+            <Form.Control
+                type="file"
+                accept=".pdf"
+                onChange={(e) => {
+                    const target = e.target as HTMLInputElement;
+                    setPdfFile(target.files ? target.files[0] : null);
+                }}
+                disabled={isLoading}
+            />
+            <Form.Text className="text-muted">
+                Optional: Upload a PDF document. Text, images, diagrams and charts will be automatically analyzed.
+            </Form.Text>
+            {pdfFile && (
+                <div className="mt-2 text-success">
+                    Selected: {pdfFile.name} ({(pdfFile.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+            )}
+        </Form.Group>
 
 
 
