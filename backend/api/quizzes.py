@@ -6,7 +6,7 @@ from flask_login import login_required
 from bson import ObjectId
 
 from config import get_db, get_current_user_db_id
-from core.llm import get_llm_client, generate_quiz
+from core.llm import get_llm_client, generate_quiz, extract_facts, generate_question_for_fact
 
 quiz_routes = Blueprint('quizzes', __name__)
 
@@ -243,74 +243,94 @@ def get_token_usage():
     })
 
 
-@quiz_routes.route('/api/quizzes/generate', methods=['POST'])
-def generate_quiz_endpoint():
-    """Generates a quiz using AI. Saves to DB only if user is logged in."""
+@quiz_routes.route('/api/quizzes/generate-stream', methods=['POST'])
+def generate_quiz_stream():
+    """Stream quiz generation progress with real Server Sent Events"""
+    from flask import Response
+    import queue
+    import threading
+
     user_db_id = get_current_user_db_id() 
     is_guest = user_db_id is None
-    print(f"POST /api/quizzes/generate request received. UserID: {user_db_id} (Guest: {is_guest})")
+    
+    data = request.get_json()
+    if not data or not data.get('title') or not data.get('topic'):
+        return jsonify({"error": "Missing 'title' or 'topic'"}), 400
+    
+    req_title = data['title']
+    topic = data['topic']
+    num_questions = data.get('num_questions', 5)
+    difficulty = data.get('difficulty', 3)
+    language = data.get('language', "English")
+    
+    if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
+        return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
+    if not isinstance(difficulty, int) or not 1 <= difficulty <= 5:
+        return jsonify({"error": "Invalid 'difficulty' (1-5)."}), 400
 
-    try:
-        data = request.get_json()
-        if not data or not data.get('title') or not data.get('topic'):
-            return jsonify({"error": "Missing 'title' or 'topic'"}), 400
-        req_title = data['title']
-        topic = data['topic']
-        num_questions = data.get('num_questions', 5)
-        difficulty = data.get('difficulty', 3)
-        language = data.get('language', "English")
-        
-        if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
-            return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
-        if not isinstance(difficulty, int) or not 1 <= difficulty <= 5:
-            return jsonify({"error": "Invalid 'difficulty' (1-5)."}), 400
+    progress_queue = queue.Queue()
 
-        questions = generate_quiz(topic, num_questions, difficulty, language)
-        print(f"Successfully generated {len(questions)} questions.")
+    def generate():
+        try:
+            # Step 1: Extract facts - 40%
+            facts = extract_facts(topic, num_questions, language)
+            
+            if num_questions is not None:
+                facts = facts[:num_questions]
+            
+            # Step 2: Generate each question - remaining 60%
+            questions = []
+            for idx, fact in enumerate(facts):
+                try:
+                    questions.append(generate_question_for_fact(fact, difficulty, language))
+                except Exception:
+                    pass
+                
+                current_progress = int(((idx + 1) / len(facts)) * 100)
+                progress_queue.put(json.dumps({
+                    "progress": current_progress, 
+                    "status": f"{idx + 1} / {len(facts)}"
+                }))
+            
+            # Build final quiz
+            quiz_document_data = {
+                "id": str(uuid.uuid4()),
+                "title": req_title,
+                "topic": topic,
+                "questions": questions,
+            }
 
-        quiz_document_data = {
-            "id": str(uuid.uuid4()),
-            "title": req_title,
-            "topic": topic,
-            "questions": questions,
-        }
+            # Save to DB if logged in
+            if not is_guest:
+                db = get_db()
+                quizzes_collection = db.quizzes
+                quiz_document_data_to_save = quiz_document_data.copy() 
+                quiz_document_data_to_save['userId'] = user_db_id
+                try:
+                    quizzes_collection.insert_one(quiz_document_data_to_save)
+                except Exception as db_error:
+                    print(f"DB save error: {db_error}")
 
-        if not is_guest:
-            db = get_db()
-            quizzes_collection = db.quizzes
-            quiz_document_data_to_save = quiz_document_data.copy() 
-            quiz_document_data_to_save['userId'] = user_db_id
-            try:
-                insert_result = quizzes_collection.insert_one(quiz_document_data_to_save)
-                print(f"Saved generated quiz to DB. ID: {quiz_document_data['id']}, UserID: {user_db_id}")
+            progress_queue.put(json.dumps({"complete": True, "quiz": quiz_document_data}))
 
-                saved_quiz_from_db = quizzes_collection.find_one({"id": quiz_document_data['id']})
-                if not saved_quiz_from_db: raise Exception("Failed to retrieve saved quiz.")
+        except Exception as e:
+            traceback.print_exc()
+            progress_queue.put(json.dumps({"error": str(e)}))
+        finally:
+            progress_queue.put(None)
 
-                response_data = {}
-                for key, value in saved_quiz_from_db.items():
-                    if isinstance(value, ObjectId):
-                        response_data[key] = str(value)
-                    else:
-                        response_data[key] = value
-                response_data.pop('_id', None) 
-                print(f"Returning saved quiz data for user. Quiz ID: {response_data['id']}")
-                return jsonify(response_data), 201
+    # Start generation in background thread
+    threading.Thread(target=generate, daemon=True).start()
 
-            except Exception as db_error:
-                 print(f"Error saving generated quiz to DB for user {user_db_id}: {db_error}")
-                 traceback.print_exc()
-                 return jsonify({"error": "Failed to save generated quiz."}), 500
-        else:
-
-            print(f"Generated quiz for GUEST (not saved). ID: {quiz_document_data['id']}")
-            quiz_document_data['userId'] = None
-            return jsonify(quiz_document_data), 200 
-
-    except Exception as e:
-        print(f"Unexpected error in /api/quizzes/generate: {e}")
-        traceback.print_exc()
-        return jsonify({"error": "Server error during quiz generation."}), 500
+    # Stream events to client
+    def stream_response():
+        while True:
+            msg = progress_queue.get()
+            if msg is None:
+                break
+            yield f"data: {msg}\n\n"
+    
+    return Response(stream_response(), mimetype='text/event-stream')
 
 
 @quiz_routes.route('/api/quizzes/generate-from-pdf', methods=['POST'])

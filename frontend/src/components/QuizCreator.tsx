@@ -38,6 +38,8 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
         if (numQuestions !== null && (numQuestions < 1 || numQuestions > 100)) { setError("Number of questions must be between 1 and 100."); return; }
 
         setIsLoading(true);
+        setGenerationProgress(0);
+        setGenerationStatus("");
 
         try {
             let response;
@@ -56,19 +58,75 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 response = await axios.post<QuizData>(
                     `${API_BASE_URL}/api/quizzes/generate-from-pdf`,
                     formData,
-                    { headers: { 'Content-Type': 'multipart/form-data' } }
+                    { 
+                        headers: { 'Content-Type': 'multipart/form-data' },
+                        onDownloadProgress: (progressEvent) => {
+                            if (progressEvent.total) {
+                                const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                                setGenerationProgress(percent);
+                            }
+                        }
+                    }
                 );
             } else {
                 console.log(`Sending request to generate quiz: Title='${title}', Topic='${topic}', NumQuestions=${numQuestions}`);
 
-                // Make POST request to the backend endpoint
-                response = await axios.post<QuizData>(`${API_BASE_URL}/api/quizzes/generate`, {
-                    title: title.trim(),
-                    topic: topic.trim(),
-                    num_questions: numQuestions,
-                    difficulty: difficulty,
-                    language: language
+                // Use real Server Sent Events stream with actual progress
+                const streamResponse = await fetch(`${API_BASE_URL}/api/quizzes/generate-stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title.trim(),
+                        topic: topic.trim(),
+                        num_questions: numQuestions,
+                        difficulty: difficulty,
+                        language: language
+                    })
                 });
+
+                const reader = streamResponse.body?.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalQuiz: any = null;
+
+                if (reader) {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n\n');
+                        buffer = lines.pop() || '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = JSON.parse(line.substring(6));
+                                
+                                if (data.error) {
+                                    throw new Error(data.error);
+                                }
+                                
+                                if (data.progress !== undefined) {
+                                    setGenerationProgress(data.progress);
+                                }
+                                
+                                if (data.status) {
+                                    setGenerationStatus(data.status);
+                                }
+                                
+                                if (data.complete) {
+                                    finalQuiz = data.quiz;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!finalQuiz) {
+                    throw new Error("No quiz data received");
+                }
+
+                response = { data: finalQuiz };
             }
 
             const newQuizData = response.data; // The backend returns the created quiz
@@ -219,7 +277,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                             <div className="mb-3">
                                 <div className="d-flex justify-content-between mb-1">
                                     <span className="text-muted small">{generationStatus}</span>
-                                    <span className="text-muted small">{generationProgress}%</span>
+                                    <span className="text-muted small">{Math.round(generationProgress)}%</span>
                                 </div>
                                 <div className="progress" style={{height: '8px'}}>
                                     <div 
