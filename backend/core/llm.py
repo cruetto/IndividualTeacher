@@ -6,23 +6,6 @@ from langchain_core.output_parsers import JsonOutputParser
 _llm_client = None
 json_parser = JsonOutputParser()
 
-# Global token usage tracking
-token_usage = {
-    "total_prompt_tokens": 0,
-    "total_completion_tokens": 0,
-    "total_requests": 0,
-    "by_endpoint": {}
-}
-
-def add_token_usage(usage, endpoint_name):
-    """Helper to safely add token usage counts"""
-    if usage:
-        token_usage['total_prompt_tokens'] += usage.get('prompt_tokens', 0)
-        token_usage['total_completion_tokens'] += usage.get('completion_tokens', 0)
-        token_usage['total_requests'] += 1
-        token_usage['by_endpoint'][endpoint_name] = token_usage['by_endpoint'].get(endpoint_name, 0) + usage.get('total_tokens', 0)
-        print(f"✅ Added token usage: {usage.get('total_tokens', 0)} tokens for {endpoint_name}")
-        print(f"✅ Total usage now: {token_usage['total_prompt_tokens'] + token_usage['total_completion_tokens']} tokens")
 
 
 def get_llm_client(model: str = "llama-3.3-70b-versatile", temperature: float = 0.7, top_p: float = 0.9):
@@ -161,10 +144,6 @@ def extract_facts(source: str, target_question_count: int | None = None, languag
     prompt = create_fact_extraction_prompt(source, requested_facts, language)
     response = llm.invoke(prompt)
     
-    # Track token usage
-    if hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
-        usage = response.response_metadata['token_usage']
-        add_token_usage(usage, 'fact_extraction')
     
     content = response.content.strip()
     
@@ -205,10 +184,6 @@ def generate_question_for_fact(fact: str, difficulty: int = 3, language: str = "
     prompt = create_question_from_fact_prompt(fact, difficulty, language)
     response = llm.invoke(prompt)
     
-    # Track token usage
-    if hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
-        usage = response.response_metadata['token_usage']
-        add_token_usage(usage, 'question_generation')
     
     content = response.content.strip()
     if content.startswith("```json"): content = content[7:]

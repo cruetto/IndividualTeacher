@@ -67,31 +67,7 @@ const QuizManager = ({
   const [clusterizeEnabled, setClusterizeEnabled] = useState(false);
   const [isClustering, setIsClustering] = useState(false);
   const [clusters, setClusters] = useState<number[] | null>(null);
-  const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
-  const [tokenUsage, setTokenUsage] = useState<any>(null);
-
-  // Fetch token usage after LLM operations are completed
-  const refreshTokenUsage = async () => {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/token-usage`);
-      if (res.ok) {
-        const data = await res.json();
-        setTokenUsage(data);
-      }
-    } catch (e) {}
-  };
-
-  // Load once on mount
-  useEffect(() => {
-    refreshTokenUsage();
-  }, []);
-
-  // Refresh token usage after clustering completes
-  useEffect(() => {
-    if (!isClustering && clusters && clusterNames) {
-      refreshTokenUsage();
-    }
-  }, [isClustering, clusters, clusterNames]);
+   const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
 
   // Auto-recluster whenever active quiz list changes
   useEffect(() => {
@@ -391,12 +367,7 @@ const QuizManager = ({
                           {isLoggingOut ? <Spinner animation="border" size="sm" /> : "Logout"}
                       </Button>
                       
-                      {tokenUsage && (
-                        <div className="mt-2 text-center text-muted small">
-                          <div className="fw-bold">{tokenUsage.total_tokens?.toLocaleString()} tokens</div>
-                          <div className="text-xs">${tokenUsage.approx_cost_usd}</div>
-                        </div>
-                      )}
+
                   </div>
               ) : (
                   // Render Logged-out view ONLY if not loading AND no user

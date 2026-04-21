@@ -229,18 +229,6 @@ def get_models():
     return jsonify(get_available_groq_models())
 
 
-@quiz_routes.route('/api/token-usage', methods=['GET'])
-def get_token_usage():
-    """Return current token usage statistics"""
-    from core.llm import token_usage
-    
-    total_tokens = token_usage['total_prompt_tokens'] + token_usage['total_completion_tokens']
-    
-    return jsonify({
-        **token_usage,
-        "total_tokens": total_tokens,
-        "approx_cost_usd": round(total_tokens * 0.00000059, 4)
-    })
 
 
 @quiz_routes.route('/api/quizzes/generate-stream', methods=['POST'])
