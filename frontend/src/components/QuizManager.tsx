@@ -81,66 +81,41 @@ const QuizManager = ({
       return;
     }
 
-    // Create signature of current list to verify alignment when response comes back
-    const listSignature = activeList.map(q => q.id).join(',');
-    
     // Debounced cluster run
     const timer = setTimeout(async () => {
       
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes`, {
+        // First try INSTANT extract from cache
+        let response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes/extract`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ titles: activeList.map(q => q.title) })
         });
         
-        if (response.status === 202) {
-          console.log("⏳ Server says clusters are pending - will retry");
-          // Keep trying until they are ready
-          setTimeout(async () => {
-            if (clusterizeEnabled) {
-              const refreshResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ titles: activeList.map(q => q.title) })
-              });
-              
-              if (refreshResponse.ok && refreshResponse.status !== 202) {
-                const refreshData = await refreshResponse.json();
-                const currentSignatureAfter = (currentUser ? userQuizList : guestQuizList).map(q => q.id).join(',');
-                if (listSignature === currentSignatureAfter && refreshData.clusters && refreshData.clusters.length > 0) {
-                  console.log("✅ Clusters are now ready");
-                  setClusters(refreshData.clusters);
-                  setClusterNames(refreshData.names);
-                }
-              }
-            }
-          }, 2000);
-        } else if (response.ok) {
+        if (response.status === 404) {
+          // No cache available - run full clusterize
+          console.log("🟡 No cached clusters found, running full clusterization");
+          response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes/clusterize`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titles: activeList.map(q => q.title) })
+          });
+        }
+        
+        if (response.ok) {
           const data = await response.json();
           
-          console.log("🔵 CLUSTER API RESPONSE:", data);
-          console.log("🔵 Expected quiz count:", activeList.length);
-          console.log("🔵 Received cluster count:", data.clusters?.length || 0);
-          
-          // Verify that quiz list hasn't changed during API call - prevents shuffle misalignment
-          const currentSignature = (currentUser ? userQuizList : guestQuizList).map(q => q.id).join(',');
-          
-          if (listSignature === currentSignature) {
-            // Only apply clusters if list hasn't changed AND we have valid data
-            if (data.clusters && data.clusters.length > 0 && Object.keys(data.names).length > 0) {
-              console.log("✅ Applying valid clusters");
-              setClusters(data.clusters);
-              setClusterNames(data.names);
-            }
-          } else {
-            console.log("⚠️ Quiz list changed during API call - discarding stale clusters");
+          // Only apply clusters if we have valid data
+          if (data.clusters && data.clusters.length > 0 && Object.keys(data.names).length > 0) {
+            console.log("✅ Applying clusters");
+            setClusters(data.clusters);
+            setClusterNames(data.names);
           }
         }
       } catch (err) {
-        console.error("Background clustering failed:", err);
+        console.error("Clustering failed:", err);
       }
-    }, 800);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [currentUser, userQuizList, guestQuizList, clusterizeEnabled]);
@@ -178,7 +153,8 @@ const QuizManager = ({
   // Navigate to the Quiz Creator page
   const handleCreateClick = () => {
       navigate('/create');
-      handleCloseOffcanvas(); // Close sidebar after navigating
+      // NEVER close quiz manager automatically - only user closes it manually
+      // handleCloseOffcanvas(); // Close sidebar after navigating
   };
 
   // Select a quiz and navigate to home page if needed
@@ -188,7 +164,7 @@ const QuizManager = ({
       if (location.pathname !== '/') {
           navigate('/');
       }
-      // Optional: Close the offcanvas when a quiz is selected
+      // NEVER close quiz manager automatically - only user closes it manually
       // handleCloseOffcanvas();
   };
 

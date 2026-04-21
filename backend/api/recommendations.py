@@ -116,28 +116,41 @@ def get_library_stats():
         return jsonify({"error": "Failed to get library stats"}), 500
 
 
-@recommendation_routes.route('/api/cluster-quizzes', methods=['POST'])
-def cluster_quizzes():
+# Global cluster cache per user
+_cluster_cache = {}  # user_id -> { clusters: [], names: {}, hash: str }
+
+def get_list_hash(items: list) -> str:
+    """Generate stable hash for list comparison"""
+    import hashlib
+    return hashlib.sha256('\n'.join(items).encode()).hexdigest()
+
+
+@recommendation_routes.route('/api/cluster-quizzes/clusterize', methods=['POST'])
+def cluster_quizzes_full():
     """
-    Cluster ONLY the current user's quizzes live on request
-    No global caching - cluster exactly what was sent
+    FULL CLUSTERIZATION ENDPOINT
+    Heavy operation: Generate embeddings, run KMeans, generate LLM names
+    Run this ONLY when quiz list actually changes
     """
     try:
         data = request.get_json()
         titles = data.get('titles', [])
         
-        user_id = get_current_user_db_id()
+        user_id = get_current_user_db_id() or "guest"
         
-        print(f"[CLUSTER API] Request received for user: {user_id}")
-        print(f"[CLUSTER API] Received {len(titles)} quiz titles to cluster")
+        print(f"[CLUSTER FULL] Request received for user: {user_id}")
+        print(f"[CLUSTER FULL] Received {len(titles)} quiz titles to cluster")
         
         if len(titles) < 2:
-            print(f"[CLUSTER API] Not enough quizzes to cluster")
-            return jsonify({
+            print(f"[CLUSTER FULL] Not enough quizzes to cluster")
+            result = {
                 "clusters": [0] * len(titles),
                 "count": 1,
-                "names": {0: "Quizzes"}
-            })
+                "names": {0: "Quizzes"},
+                "hash": get_list_hash(titles)
+            }
+            _cluster_cache[user_id] = result
+            return jsonify(result)
         
         from core.embeddings import cluster_quiz_titles
         from core.llm import get_llm_client
@@ -145,7 +158,7 @@ def cluster_quizzes():
         # Generate fresh clusters just for this exact list
         clusters = cluster_quiz_titles(titles)
         
-        print(f"[CLUSTER API] Generated clusters: {clusters}")
+        print(f"[CLUSTER FULL] Generated clusters: {clusters}")
         
         cluster_count = len(set(clusters))
         cluster_names = {}
@@ -169,18 +182,52 @@ def cluster_quizzes():
                             name = ' '.join(name_words[:3])
                         cluster_names[cluster_id] = name
                 except Exception as e:
-                    print(f"[CLUSTER API] Error naming cluster {cluster_id}: {e}")
+                    print(f"[CLUSTER FULL] Error naming cluster {cluster_id}: {e}")
         
-        print(f"[CLUSTER API] cluster names: {cluster_names}")
+        print(f"[CLUSTER FULL] cluster names: {cluster_names}")
         
-        return jsonify({
+        result = {
             "status": "ready",
             "clusters": clusters,
             "count": cluster_count,
-            "names": cluster_names
-        })
+            "names": cluster_names,
+            "hash": get_list_hash(titles)
+        }
+        
+        # Cache this result permanently for this user
+        _cluster_cache[user_id] = result
+        
+        return jsonify(result)
     
     except Exception as e:
         print(f"Error getting clusters: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Failed to get clusters"}), 500
+
+
+@recommendation_routes.route('/api/cluster-quizzes/extract', methods=['POST'])
+def cluster_quizzes_extract():
+    """
+    EXTRACT ONLY ENDPOINT
+    INSTANT OPERATION: Return already cached clusters from memory
+    Run this when user toggles cluster switch
+    Returns 404 if no cache exists - client should call /clusterize then
+    """
+    try:
+        data = request.get_json()
+        titles = data.get('titles', [])
+        
+        user_id = get_current_user_db_id() or "guest"
+        
+        current_hash = get_list_hash(titles)
+        
+        if user_id in _cluster_cache and _cluster_cache[user_id]['hash'] == current_hash:
+            print(f"[CLUSTER EXTRACT] Returning cached result for user {user_id}")
+            return jsonify(_cluster_cache[user_id])
+        else:
+            return jsonify({"status": "missing"}), 404
+            
+    except Exception as e:
+        print(f"Error extracting clusters: {e}")
         traceback.print_exc()
         return jsonify({"error": "Failed to get clusters"}), 500

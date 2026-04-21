@@ -589,8 +589,9 @@ function App() {
     }, [quizFinished, fetchRecommendations]);
 
     useEffect(() => {
-    // Only auto-select if nothing is selected yet
+    // Auto select logic:
     if (!currentQuizId) {
+        // Nothing selected - select first available
         if (userQuizzes.length > 0) {
             handleSelectQuiz(userQuizzes[0].id);
         } else if (publicQuizzes.length > 0) {
@@ -598,8 +599,19 @@ function App() {
         } else if (guestQuizzes.length > 0) {
             handleSelectQuiz(guestQuizzes[0].id);
         }
+    } else {
+        // We HAVE a selected quiz - verify it still exists in lists
+        const exists = 
+            guestQuizzes.some(q => q.id === currentQuizId) ||
+            userQuizzes.some(q => q.id === currentQuizId) ||
+            publicQuizzes.some(q => q.id === currentQuizId);
+        
+        if (!exists) {
+            // Selected quiz disappeared - deselect it
+            handleSelectQuiz(null);
+        }
     }
-    // Only run when quiz lists or selection changes
+    // Run whenever quiz lists or selection changes
 }, [userQuizzes, publicQuizzes, guestQuizzes, currentQuizId, handleSelectQuiz]);
 
     // Prepare context for the ChatApp
