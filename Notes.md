@@ -1,6 +1,7 @@
 
 
 NEXT:
+    [] Check progress bar in backend
     [] Clustering broken
     [] Async LLM calls
     New question types:
@@ -15,6 +16,6 @@ SOMEDAY/Maybe:
 
     [] Understand fallback of llm structured outputs 
     [] dinamic video search?
-    [] Advanced settings for each llm: extractor and creator
+    [] Advanced settings for each llm to select parameters: extractor and creator
     [] API key holder from groq 
     [] Implement other models/services to never pay a cent

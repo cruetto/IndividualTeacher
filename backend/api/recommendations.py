@@ -119,22 +119,64 @@ def get_library_stats():
 @recommendation_routes.route('/api/cluster-quizzes', methods=['POST'])
 def cluster_quizzes():
     """
-    Return precomputed cached clusters
-    Clusters are already calculated once at server startup
+    Cluster ONLY the current user's quizzes live on request
+    No global caching - cluster exactly what was sent
     """
     try:
-        from core.embeddings import clusters, cluster_names
+        data = request.get_json()
+        titles = data.get('titles', [])
         
-        if clusters is None or cluster_names is None:
+        user_id = get_current_user_db_id()
+        
+        print(f"[CLUSTER API] Request received for user: {user_id}")
+        print(f"[CLUSTER API] Received {len(titles)} quiz titles to cluster")
+        
+        if len(titles) < 2:
+            print(f"[CLUSTER API] Not enough quizzes to cluster")
             return jsonify({
-                "clusters": [],
-                "count": 0,
-                "names": {}
+                "clusters": [0] * len(titles),
+                "count": 1,
+                "names": {0: "Quizzes"}
             })
         
+        from core.embeddings import cluster_quiz_titles
+        from core.llm import get_llm_client
+        
+        # Generate fresh clusters just for this exact list
+        clusters = cluster_quiz_titles(titles)
+        
+        print(f"[CLUSTER API] Generated clusters: {clusters}")
+        
+        cluster_count = len(set(clusters))
+        cluster_names = {}
+        
+        # Generate names for these specific clusters
+        llm_client = get_llm_client()
+        if llm_client:
+            cluster_titles = {}
+            for idx, cluster_id in enumerate(clusters):
+                cluster_titles.setdefault(cluster_id, []).append(titles[idx])
+
+            for cluster_id, titles_in_cluster in cluster_titles.items():
+                try:
+                    prompt = f"Give a VERY SHORT category name for these quiz titles. ONLY RETURN 1 TO 3 WORDS MAXIMUM. ABSOLUTELY NO EXTRA TEXT, NO DASHES, NO PUNCTUATION, JUST THE NAME:\n"
+                    prompt += "\n".join([f"- {t}" for t in titles_in_cluster])
+                    response = llm_client.invoke(prompt)
+                    if response.content:
+                        name = response.content.strip().strip('"\'').title()
+                        name_words = name.split()
+                        if len(name_words) > 3:
+                            name = ' '.join(name_words[:3])
+                        cluster_names[cluster_id] = name
+                except Exception as e:
+                    print(f"[CLUSTER API] Error naming cluster {cluster_id}: {e}")
+        
+        print(f"[CLUSTER API] cluster names: {cluster_names}")
+        
         return jsonify({
+            "status": "ready",
             "clusters": clusters,
-            "count": max(clusters) + 1,
+            "count": cluster_count,
             "names": cluster_names
         })
     

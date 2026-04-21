@@ -68,6 +68,30 @@ const QuizManager = ({
   const [isClustering, setIsClustering] = useState(false);
   const [clusters, setClusters] = useState<number[] | null>(null);
   const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
+  const [tokenUsage, setTokenUsage] = useState<any>(null);
+
+  // Fetch token usage after LLM operations are completed
+  const refreshTokenUsage = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/token-usage`);
+      if (res.ok) {
+        const data = await res.json();
+        setTokenUsage(data);
+      }
+    } catch (e) {}
+  };
+
+  // Load once on mount
+  useEffect(() => {
+    refreshTokenUsage();
+  }, []);
+
+  // Refresh token usage after clustering completes
+  useEffect(() => {
+    if (!isClustering && clusters && clusterNames) {
+      refreshTokenUsage();
+    }
+  }, [isClustering, clusters, clusterNames]);
 
   // Auto-recluster whenever active quiz list changes
   useEffect(() => {
@@ -78,9 +102,13 @@ const QuizManager = ({
     const activeList = currentUser ? userQuizList : guestQuizList;
     if (activeList.length === 0) {
       setClusters(null);
+      setClusterNames(null);
       return;
     }
 
+    // Create signature of current list to verify alignment when response comes back
+    const listSignature = activeList.map(q => q.id).join(',');
+    
     // Debounced cluster run
     const timer = setTimeout(async () => {
       setIsClustering(true);
@@ -92,10 +120,48 @@ const QuizManager = ({
           body: JSON.stringify({ titles: activeList.map(q => q.title) })
         });
         
-        if (response.ok) {
+        if (response.status === 202) {
+          console.log("⏳ Server says clusters are pending - will retry");
+          // Keep trying until they are ready
+          setTimeout(async () => {
+            if (clusterizeEnabled) {
+              const refreshResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ titles: activeList.map(q => q.title) })
+              });
+              
+              if (refreshResponse.ok && refreshResponse.status !== 202) {
+                const refreshData = await refreshResponse.json();
+                const currentSignatureAfter = (currentUser ? userQuizList : guestQuizList).map(q => q.id).join(',');
+                if (listSignature === currentSignatureAfter && refreshData.clusters && refreshData.clusters.length > 0) {
+                  console.log("✅ Clusters are now ready");
+                  setClusters(refreshData.clusters);
+                  setClusterNames(refreshData.names);
+                }
+              }
+            }
+          }, 2000);
+        } else if (response.ok) {
           const data = await response.json();
-          setClusters(data.clusters);
-          setClusterNames(data.names);
+          
+          console.log("🔵 CLUSTER API RESPONSE:", data);
+          console.log("🔵 Expected quiz count:", activeList.length);
+          console.log("🔵 Received cluster count:", data.clusters?.length || 0);
+          
+          // Verify that quiz list hasn't changed during API call - prevents shuffle misalignment
+          const currentSignature = (currentUser ? userQuizList : guestQuizList).map(q => q.id).join(',');
+          
+          if (listSignature === currentSignature) {
+            // Only apply clusters if list hasn't changed AND we have valid data
+            if (data.clusters && data.clusters.length > 0 && Object.keys(data.names).length > 0) {
+              console.log("✅ Applying valid clusters");
+              setClusters(data.clusters);
+              setClusterNames(data.names);
+            }
+          } else {
+            console.log("⚠️ Quiz list changed during API call - discarding stale clusters");
+          }
         }
       } catch (err) {
         console.error("Background clustering failed:", err);
@@ -207,8 +273,8 @@ const QuizManager = ({
       );
     }
 
-    // If clustering is enabled AND this is not public quizzes, group quizzes by cluster
-    if (clusterizeEnabled && clusters && clusterOffset >= 0) {
+    // If clustering is enabled AND FULLY initialized (both clusters + names exist AND clusters has data) AND this is not public quizzes, group quizzes by cluster
+    if (clusterizeEnabled && clusters && clusters.length > 0 && clusterNames && Object.keys(clusterNames).length > 0 && clusterOffset >= 0) {
       // Build clusters for this list
       const clusterGroups: { [key: number]: QuizData[] } = {};
       
@@ -222,7 +288,7 @@ const QuizManager = ({
 
       return (
         <>
-          <h5 className="mt-3 mb-1 text-muted">{title}</h5>
+          <h5 className="mt-3 mb-1 text-muted">{title} <span className="badge bg-light text-muted ms-1">{list.length}</span></h5>
           {Object.entries(clusterGroups)
             .sort(([a], [b]) => parseInt(a) - parseInt(b))
             .map(([clusterId, quizzes]) => (
@@ -324,6 +390,13 @@ const QuizManager = ({
                       <Button variant="outline-secondary" size="sm" onClick={handleLogoutClick} disabled={isLoggingOut}>
                           {isLoggingOut ? <Spinner animation="border" size="sm" /> : "Logout"}
                       </Button>
+                      
+                      {tokenUsage && (
+                        <div className="mt-2 text-center text-muted small">
+                          <div className="fw-bold">{tokenUsage.total_tokens?.toLocaleString()} tokens</div>
+                          <div className="text-xs">${tokenUsage.approx_cost_usd}</div>
+                        </div>
+                      )}
                   </div>
               ) : (
                   // Render Logged-out view ONLY if not loading AND no user
@@ -362,16 +435,25 @@ const QuizManager = ({
             />
             <hr className="my-2"/>
             <Form.Check
-                type="switch" id="clusterize-check" label={isClustering ? "Clustering quizzes..." : "Clusterize Quizzes"}
+                type="switch" 
+                id="clusterize-check" 
+                label={
+                  (clusterizeEnabled && !(clusters && clusterNames)) 
+                    ? <>
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Initializing clusters...
+                      </>
+                    : "Clusterize Quizzes"
+                }
                 checked={clusterizeEnabled} 
-                disabled={isClustering}
+                disabled={clusterizeEnabled && !(clusters && clusterNames)}
                 onChange={() => {
                     const newState = !clusterizeEnabled;
                     setClusterizeEnabled(newState);
                     
                     if (!newState) {
                        setClusters(null);
-                       // Keep cluster names cached for next toggle
+                       setClusterNames(null);
                     }
                 }} 
                 className="small"
