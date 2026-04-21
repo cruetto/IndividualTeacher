@@ -59,9 +59,6 @@ def get_available_groq_models():
     ]
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# NEW V2 QUIZ GENERATION SYSTEM - TWO STEP PIPELINE
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def create_fact_extraction_prompt(source: str, requested_fact_count: int, language: str) -> str:
     """Prompt for step 1: Extract or generate facts sorted by importance"""
@@ -165,7 +162,7 @@ def extract_facts(source: str, target_question_count: int | None = None, languag
         return result.get("facts", [])
     except json.JSONDecodeError:
         # Fallback: extract facts manually if LLM didn't return proper JSON
-        print(f"⚠️ JSON decode failed, attempting manual fact extraction")
+        print(f"JSON decode failed, attempting manual fact extraction")
         facts = []
         for line in content.split('\n'):
             line = line.strip()
@@ -233,10 +230,10 @@ def generate_quiz(source: str, question_count: int | None = None, difficulty: in
 
         progress = int((idx + 1) / len(facts) * 50)
         percentage = int((idx + 1) / len(facts) * 100)
-        bar = '█' * progress + ' ' * (50 - progress)
+        bar = '=' * progress + ' ' * (50 - progress)
         print(f"{idx + 1}/{len(facts)} [{bar}] {percentage}%", end='\r')
 
-    print(f"\n✅ Completed. Generated {len(questions)} questions")
+    print(f"\nCompleted. Generated {len(questions)} questions")
     
     return questions
 

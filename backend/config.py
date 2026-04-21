@@ -50,31 +50,24 @@ login_manager = LoginManager()
 
 @login_manager.user_loader
 def load_user(user_id_str):
-    """Loads user from DB based on string ID stored in session cookie."""
     if not ObjectId.is_valid(user_id_str):
-        print(f"User loader received invalid ObjectId string: {user_id_str}")
         return None
     try:
         user_data = get_db().users.find_one({'_id': ObjectId(user_id_str)})
-        if user_data:
-            return User(user_data)
-        else:
-            return None
+        return User(user_data) if user_data else None
     except Exception as e:
-         print(f"Error in user_loader for ID {user_id_str}: {e}")
-         return None
+        print(f"Error in user_loader for ID {user_id_str}: {e}")
+        return None
 
 
 @login_manager.unauthorized_handler
 def unauthorized():
-    """Handles unauthorized access attempts (e.g., accessing @login_required routes without session)."""
-    print("Unauthorized access attempt detected (session invalid or missing).")
+    print("Unauthorized access attempt detected.")
     from flask import jsonify
     return jsonify(error="Authentication required."), 401
 
 
 def get_current_user_db_id():
-    """Returns the MongoDB ObjectId of the currently logged-in user, or None."""
     from flask_login import current_user
     if current_user and current_user.is_authenticated:
         return current_user.get_db_id()
@@ -82,7 +75,6 @@ def get_current_user_db_id():
 
 
 def init_app(app):
-    """Initialize all app configuration, CORS, database, login manager"""
     app.secret_key = os.environ.get('FLASK_SECRET_KEY')
     
     if IS_PRODUCTION:
@@ -96,7 +88,7 @@ def init_app(app):
     
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     
-    print(f"--- FLASK BACKEND: Initializing GLOBAL Flask-CORS for Origin: {FRONTEND_ORIGIN} ---")
+    print(f"--- FLASK BACKEND: Initializing CORS for Origin: {FRONTEND_ORIGIN} ---")
     CORS(
         app,
         origins=[FRONTEND_ORIGIN],
@@ -107,7 +99,6 @@ def init_app(app):
     
     app.json_encoder = MongoJSONEncoder
     
-    # Database Connection
     try:
         connect_to_db()
         print("Database connection established successfully.")
@@ -115,10 +106,7 @@ def init_app(app):
         print(f"FATAL: Could not connect to database on startup: {e}")
         sys.exit(1)
     
-
-    
-    # Flask-Login Setup
     login_manager.init_app(app)
     
     if not GOOGLE_CLIENT_ID:
-        print("FATAL: GOOGLE_CLIENT_ID environment variable not set. Google Sign-In backend verification will fail.")
+        print("FATAL: GOOGLE_CLIENT_ID environment variable not set.")

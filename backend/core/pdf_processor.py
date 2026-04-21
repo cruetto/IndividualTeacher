@@ -2,7 +2,6 @@ import fitz  # PyMuPDF
 import base64
 import logging
 import os
-from typing import List, Dict, Optional
 from groq import Groq
 
 logger = logging.getLogger(__name__)
@@ -13,7 +12,7 @@ class PDFProcessor:
         self.vision_model = "llama-3.2-11b-vision-preview"
         self.max_image_size = 20 * 1024 * 1024  # 20MB
 
-    def _describe_image(self, image_bytes: bytes, image_index: int, page_num: int) -> Optional[str]:
+    def _describe_image(self, image_bytes, image_index, page_num):
         """Get detailed description of an image using Groq Vision model"""
         try:
             base64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -49,12 +48,12 @@ class PDFProcessor:
             logger.warning(f"Failed to process image {image_index} on page {page_num}: {str(e)}")
             return None
 
-    def process_pdf(self, pdf_file_bytes: bytes) -> str:
+    def process_pdf(self, pdf_file_bytes):
         """
         Process PDF file: extract text, extract images, describe images,
         combine everything into structured document text
         """
-        document_parts: List[str] = []
+        document_parts = []
         images_processed = 0
         images_skipped = 0
         images_failed = 0
@@ -69,11 +68,9 @@ class PDFProcessor:
             for page_num, page in enumerate(doc, start=1):
                 document_parts.append(f"\n\n--- PAGE {page_num} ---")
                 
-                # Extract page text with preserved layout
                 text = page.get_text(sort=True)
                 document_parts.append(text)
                 
-                # Extract and process images on this page
                 images = page.get_images(full=True)
                 
                 for img_index, img in enumerate(images, start=1):
@@ -82,7 +79,6 @@ class PDFProcessor:
                         base_image = doc.extract_image(xref)
                         image_bytes = base_image["image"]
                         
-                        # Skip very small images (probably icons or decorations)
                         if len(image_bytes) < 1024:
                             images_skipped += 1
                             continue
@@ -104,7 +100,6 @@ class PDFProcessor:
             
             doc.close()
             
-            # Combine all parts into single document string
             full_document = "\n".join(document_parts)
             
             logger.info(f"PDF processing complete: {len(full_document)} chars, {images_processed} images processed, {images_skipped} skipped, {images_failed} failed")

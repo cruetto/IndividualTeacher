@@ -4,14 +4,12 @@ from dotenv import load_dotenv
 import numpy as np
 from huggingface_hub import InferenceClient
 
-# Load environment variables
 load_dotenv()
 
 HF_API_TOKEN = os.environ.get("HF_TOKEN")
 EMBEDDING_MODEL = "BAAI/bge-m3"
 EMBEDDING_DIMENSION = 1024
 
-# Initialize official Hugging Face Inference Client once
 client = InferenceClient(model=EMBEDDING_MODEL, token=HF_API_TOKEN)
 
 cached_clusters = None
@@ -19,33 +17,23 @@ cached_cluster_names = None
 clusters_dirty = True
 quiz_count_when_clustered = 0
 
-
+clusters = None
+cluster_names = None
 
 
 def generate_embeddings(texts):
-    """
-    Generate embeddings using OFFICIAL Hugging Face InferenceClient
-    Correct supported API method as per documentation
-    """
     if isinstance(texts, str):
         texts = [texts]
     
     cleaned = [t.strip() for t in texts if t and t.strip()]
-    
-    # BATCH ALL TEXTS IN ONE SINGLE API CALL - 100x FASTER
     embeddings = client.feature_extraction(cleaned)
     
-    # Normalize vectors to unit length (required for BGE-M3)
     normalized = []
     for emb in embeddings:
         norm = np.linalg.norm(emb)
         normalized.append((np.array(emb) / norm).tolist())
     
     return normalized
-
-
-clusters = None
-cluster_names = None
 
 
 def run_full_clustering():
@@ -62,7 +50,6 @@ def run_full_clustering():
         if not titles:
             return 0
             
-        # Only run clustering if number of quizzes changed
         if quiz_count_when_clustered == len(titles) and clusters is not None:
             return len(set(clusters))
 
@@ -92,7 +79,6 @@ def run_full_clustering():
                 except Exception as e:
                     pass
         
-        # Remember how many quizzes we clustered
         quiz_count_when_clustered = len(titles)
         print(f"Clustering completed, {cluster_count} clusters created")
         
@@ -108,16 +94,13 @@ def cluster_quiz_titles(quiz_titles):
     if len(quiz_titles) <= 1:
         return [0] * len(quiz_titles)
     
-    # Step 1: Generate semantic embeddings using BGE-M3
     embeddings = generate_embeddings(quiz_titles)
     
-    # Step 2: Find optimal number of clusters with Elbow Method
     from sklearn.cluster import KMeans
     import numpy as np
     
     X = np.array(embeddings)
     
-    # Calculate WCSS for k from 1 to min(10, n-1)
     max_k = min(10, len(quiz_titles) - 1)
     wcss = []
     

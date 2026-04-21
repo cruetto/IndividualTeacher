@@ -1,8 +1,7 @@
 
 
 NEXT:
-    [] Check progress bar in backend
-    [] Clustering broken
+    [] Token count update
     [] Async LLM calls
     New question types:
         [] multiplechoice
@@ -11,9 +10,6 @@ NEXT:
 
 SOMEDAY/Maybe:
     [] End Review doesnt shuffle quizzes
-
-
-
     [] Understand fallback of llm structured outputs 
     [] dinamic video search?
     [] Advanced settings for each llm to select parameters: extractor and creator
