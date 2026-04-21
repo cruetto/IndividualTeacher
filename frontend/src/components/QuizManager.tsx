@@ -65,7 +65,6 @@ const QuizManager = ({
   
   // Clustering feature
   const [clusterizeEnabled, setClusterizeEnabled] = useState(false);
-  const [isClustering, setIsClustering] = useState(false);
   const [clusters, setClusters] = useState<number[] | null>(null);
    const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
 
@@ -87,7 +86,6 @@ const QuizManager = ({
     
     // Debounced cluster run
     const timer = setTimeout(async () => {
-      setIsClustering(true);
       
       try {
         const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes`, {
@@ -141,8 +139,6 @@ const QuizManager = ({
         }
       } catch (err) {
         console.error("Background clustering failed:", err);
-      } finally {
-        setIsClustering(false);
       }
     }, 800);
 
