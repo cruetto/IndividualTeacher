@@ -158,7 +158,6 @@ def process_single_video(video_info: Dict) -> bool:
             "video_title": title,
             "topic": video_info.get('topic'),
             "channel": video_info.get('channel'),
-            "transcript_type": transcript_data['type'],
             "text": chunk['text'],
             "start": chunk['start'],
             "end": chunk['end'],

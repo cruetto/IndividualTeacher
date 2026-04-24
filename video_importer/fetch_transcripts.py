@@ -54,7 +54,6 @@ def fetch_single_transcript(video_id: str) -> Optional[Dict]:
         
         return {
             "video_id": video_id,
-            "type": "auto" if transcript.is_generated else "manual",
             "language": transcript.language_code,
             "transcript": transcript.to_raw_data()
         }
