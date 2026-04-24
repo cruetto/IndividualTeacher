@@ -1,10 +1,10 @@
-// frontend/src/components/ChatApp.tsx
+
 import React, { useState, useEffect, useRef } from "react";
 import { Button, Offcanvas, Form, InputGroup, Spinner } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string; // Backend URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
 
 interface ChatMessage {
@@ -12,19 +12,19 @@ interface ChatMessage {
   message: string;
 }
 
-// Define the expected structure of the context object from App
+
 interface ChatContext {
     quizTitle?: string;
     questionText?: string;
     options?: string[];
     isReviewMode?: boolean;
-    userAnswerText?: string | null; // null if skipped
+    userAnswerText?: string | null;
     correctAnswerText?: string;
     wasCorrect?: boolean;
 }
 
 interface Props {
-  chatContext: ChatContext; // Receive the prepared context object
+  chatContext: ChatContext;
 }
 
 const ChatApp: React.FC<Props> = ({ chatContext }) => {
@@ -36,29 +36,28 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
   const [isLoading, setIsLoading] = useState(false);
   const chatBoxRef = useRef<HTMLDivElement>(null);
 
-  // Scroll chat box to bottom
+
   useEffect(() => {
     if (chatBoxRef.current) {
       chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
     }
   }, [chatHistory]);
 
-    // Effect to clear chat history when quiz context significantly changes (e.g., new quiz selected)
-    // We use quizTitle as a proxy for quiz change. A more robust way might involve the quiz ID.
+
     useEffect(() => {
         console.log("ChatApp: Quiz context changed, potentially resetting history.");
-        // Reset history if the quiz title changes (and isn't undefined)
-        // Keep the initial greeting
-        setChatHistory([{ sender: "assistant", message: "Ask me about the current quiz or question." }]);
-    }, [chatContext.quizTitle]); // Depend on quizTitle
 
-  // Handle sending message
+
+        setChatHistory([{ sender: "assistant", message: "Ask me about the current quiz or question." }]);
+    }, [chatContext.quizTitle]);
+
+
   const sendMessage = async () => {
     const userMessage = message.trim();
     if (userMessage === "" || isLoading) return;
 
     const currentHistory: ChatMessage[] = [...chatHistory, { sender: "user", message: userMessage }];
-    setChatHistory(currentHistory); // Show user message immediately
+    setChatHistory(currentHistory);
     setMessage("");
     setIsLoading(true);
 
@@ -66,7 +65,7 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
         console.log("ChatApp: Sending to /api/chat with context:", chatContext);
         const response = await axios.post(`${API_BASE_URL}/api/chat`, {
             message: userMessage,
-            context: chatContext // Send the context object received from App
+            context: chatContext
         });
 
         const assistantReply = response.data?.reply || "Sorry, I couldn't get a response.";
@@ -90,7 +89,7 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
 
   return (
     <>
-      {/* Chat Button */}
+
       <Button
         variant="primary"
         className="chat-button"
@@ -102,21 +101,21 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
         onClick={() => setShowChat(prev => !prev)} aria-label="Toggle Chat"
       > 💬 </Button>
 
-      {/* Chat Interface Offcanvas */}
+
       <Offcanvas
         show={showChat} onHide={() => setShowChat(false)} placement="end"
-        backdrop={false} scroll={true} style={{ zIndex: 1045, height: '80vh', maxHeight: '600px', width: '380px', top: 'auto', bottom: 'calc(2rem + 60px + 1rem)', right: '1rem', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }} // Adjusted style for floating effect
+        backdrop={false} scroll={true} style={{ zIndex: 1045, height: '80vh', maxHeight: '600px', width: '380px', top: 'auto', bottom: 'calc(2rem + 60px + 1rem)', right: '1rem', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
       >
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>Quiz Assistant</Offcanvas.Title>
         </Offcanvas.Header>
-        <Offcanvas.Body style={{ display: "flex", flexDirection: "column", padding: '0.5rem' }}> {/* Reduced padding */}
+        <Offcanvas.Body style={{ display: "flex", flexDirection: "column", padding: '0.5rem' }}>
           <div ref={chatBoxRef} className="chat-box mb-2" style={{ flexGrow: 1, overflowY: "auto", padding: '10px' }}>
             {chatHistory.map((chat, index) => (
               <div key={index} className={`d-flex ${chat.sender === 'user' ? 'justify-content-end' : 'justify-content-start'} mb-2`}>
                  <div
-                    className={`p-2 rounded shadow-sm ${ chat.sender === 'assistant' ? 'bg-light text-dark' : 'bg-primary text-white' }`} // Added shadow
-                    style={{ maxWidth: '85%', wordWrap: 'break-word', fontSize: '0.95rem' }} // Slightly smaller font
+                    className={`p-2 rounded shadow-sm ${ chat.sender === 'assistant' ? 'bg-light text-dark' : 'bg-primary text-white' }`}
+                    style={{ maxWidth: '85%', wordWrap: 'break-word', fontSize: '0.95rem' }}
                    >
                     {chat.message}
                  </div>
@@ -127,7 +126,7 @@ const ChatApp: React.FC<Props> = ({ chatContext }) => {
           <InputGroup className="mt-auto p-2 bg-light border-top">
             <Form.Control
               value={message} onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyPress} placeholder="Ask a question..." // Shorter placeholder
+              onKeyDown={handleKeyPress} placeholder="Ask a question..."
               disabled={isLoading} aria-label="Chat message input"
               style={{ fontSize: '0.95rem' }}
             />

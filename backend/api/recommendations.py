@@ -211,7 +211,7 @@ def cluster_quizzes_extract():
     EXTRACT ONLY ENDPOINT
     INSTANT OPERATION: Return already cached clusters from memory
     Run this when user toggles cluster switch
-    Returns 404 if no cache exists - client should call /clusterize then
+    Returns status=missing if no cache exists - client should call /clusterize then
     """
     try:
         data = request.get_json()
@@ -225,7 +225,7 @@ def cluster_quizzes_extract():
             print(f"[CLUSTER EXTRACT] Returning cached result for user {user_id}")
             return jsonify(_cluster_cache[user_id])
         else:
-            return jsonify({"status": "missing"}), 404
+            return jsonify({"status": "missing"})
             
     except Exception as e:
         print(f"Error extracting clusters: {e}")

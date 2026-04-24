@@ -1,41 +1,41 @@
-// frontend/src/components/QuizManager.tsx
+
 import React, { useState, useEffect } from "react";
 import { Button, Offcanvas, ListGroup, Dropdown, Form, Spinner, Alert } from "react-bootstrap";
 import { useNavigate, useLocation } from "react-router-dom";
-import { GoogleLogin } from '@react-oauth/google'; // Import Google Login components
+import { GoogleLogin } from '@react-oauth/google';
 import { CredentialResponse } from '@react-oauth/google';
-import { QuizData, User } from "../interfaces/interfaces"; // Import interfaces
+import { QuizData, User } from "../interfaces/interfaces";
 
-// State for the right-click context menu
+
 interface ContextMenuState {
     visible: boolean;
     x: number;
     y: number;
     quizId: string | null;
     quizTitle: string | null;
-    isOwned: boolean; // Flag if the quiz is owned by the current user
+    isOwned: boolean;
 }
 
-// Props expected by the QuizManager component
+
 interface Props {
-  guestQuizList: QuizData[];   // Temporary quizzes for guests
-  publicQuizList: QuizData[];  // Quizzes with userId: null
-  userQuizList: QuizData[];    // Quizzes owned by the logged-in user
-  selectedQuizId: string | null; // ID of the currently active quiz
-  onSelectTitleItem: (id: string) => void; // Callback when a quiz title is clicked
-  onDeleteQuiz: (id: string, title: string) => void; // Callback to initiate delete confirmation
-  // Display Options
+  guestQuizList: QuizData[];
+  publicQuizList: QuizData[];
+  userQuizList: QuizData[];
+  selectedQuizId: string | null;
+  onSelectTitleItem: (id: string) => void;
+  onDeleteQuiz: (id: string, title: string) => void;
+
   shuffleQuestions: boolean;
   shuffleAnswers: boolean;
   onShuffleQuestionsToggle: () => void;
   onShuffleAnswersToggle: () => void;
-  // Authentication Props
-  currentUser: User | null; // Currently logged-in user object or null
-  authLoading: boolean; // Flag indicating if initial auth check is happening
-  onLoginSuccess: (credentialResponse: CredentialResponse) => Promise<void>; // Callback for successful Google login
-  onLoginError: () => void; // Callback for failed Google login attempt
-  onLogout: () => Promise<void>; // Callback to initiate logout
-  loginApiError: string | null; // Error message from backend login attempt
+
+  currentUser: User | null;
+  authLoading: boolean;
+  onLoginSuccess: (credentialResponse: CredentialResponse) => Promise<void>;
+  onLoginError: () => void;
+  onLogout: () => Promise<void>;
+  loginApiError: string | null;
 }
 
 const QuizManager = ({
@@ -56,24 +56,24 @@ const QuizManager = ({
     onLogout,
     loginApiError,
 }: Props) => {
-  const [showOffcanvas, setShowOffcanvas] = useState(false); // Controls sidebar visibility
-  const navigate = useNavigate(); // For navigation actions
-  const location = useLocation(); // To check current path
-  // State for the right-click context menu
+  const [showOffcanvas, setShowOffcanvas] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, quizId: null, quizTitle: null, isOwned: false });
-  const [isLoggingOut, setIsLoggingOut] = useState(false); // Spinner state for logout button
-  
-  // Clustering feature
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+
   const [clusterizeEnabled, setClusterizeEnabled] = useState(false);
   const [clusters, setClusters] = useState<number[] | null>(null);
-   const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
+  const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
 
-  // Auto-recluster whenever active quiz list changes
+
   useEffect(() => {
-    // Skip if clustering is not enabled
+
     if (!clusterizeEnabled) return;
-    
-    // Skip if empty list
+
+
     const activeList = currentUser ? userQuizList : guestQuizList;
     if (activeList.length === 0) {
       setClusters(null);
@@ -81,36 +81,32 @@ const QuizManager = ({
       return;
     }
 
-    // Debounced cluster run
+
     const timer = setTimeout(async () => {
-      
+
       try {
-        // First try INSTANT extract from cache
+
         let response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes/extract`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ titles: activeList.map(q => q.title) })
         });
-        
-        if (response.status === 404) {
-          // No cache available - run full clusterize
-          console.log("🟡 No cached clusters found, running full clusterization");
+        let data = response.ok ? await response.json() : null;
+
+        if (!response.ok || data?.status === "missing") {
           response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cluster-quizzes/clusterize`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ titles: activeList.map(q => q.title) })
           });
+          data = response.ok ? await response.json() : null;
         }
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Only apply clusters if we have valid data
-          if (data.clusters && data.clusters.length > 0 && Object.keys(data.names).length > 0) {
-            console.log("✅ Applying clusters");
-            setClusters(data.clusters);
-            setClusterNames(data.names);
-          }
+
+        if (response.ok && data?.clusters && data.clusters.length > 0 && Object.keys(data.names).length > 0) {
+          setClusters(data.clusters);
+          setClusterNames(data.names);
         }
       } catch (err) {
         console.error("Clustering failed:", err);
@@ -120,96 +116,94 @@ const QuizManager = ({
     return () => clearTimeout(timer);
   }, [currentUser, userQuizList, guestQuizList, clusterizeEnabled]);
 
-  // --- Handlers ---
+
   const handleCloseOffcanvas = () => setShowOffcanvas(false);
   const handleShowOffcanvas = () => setShowOffcanvas(true);
   const closeContextMenu = () => setContextMenu({ ...contextMenu, visible: false });
 
-  // Show context menu (only for owned quizzes when logged in)
+
   const handleContextMenu = (event: React.MouseEvent<HTMLElement>, quiz: QuizData, isOwned: boolean) => {
-      event.preventDefault(); // Prevent default browser right-click menu
-      // Only show edit/delete options if the user is logged in AND owns the quiz
+      event.preventDefault();
+
       if (currentUser && isOwned) {
            setContextMenu({ visible: true, x: event.pageX, y: event.pageY, quizId: quiz.id, quizTitle: quiz.title, isOwned });
       }
-      // Do nothing for guest or public quizzes, or if not logged in
+
   };
 
-  // Effect to close context menu when clicking outside of it
+
   useEffect(() => {
-      if (!contextMenu.visible) return; // Only add listener when menu is visible
+      if (!contextMenu.visible) return;
       const handleClickOutside = (event: MouseEvent) => {
          const targetElement = event.target as Element;
-         // Close if the click is not inside the dropdown menu itself
+
          if (targetElement && !targetElement.closest('.dropdown-menu')) {
             closeContextMenu();
         }
       };
-      document.addEventListener("click", handleClickOutside, true); // Use capture phase
-      // Cleanup: remove listener when menu hides or component unmounts
-      return () => document.removeEventListener("click", handleClickOutside, true);
-  }, [contextMenu.visible]); // Re-run effect if menu visibility changes
+      document.addEventListener("click", handleClickOutside, true);
 
-  // Navigate to the Quiz Creator page
+      return () => document.removeEventListener("click", handleClickOutside, true);
+  }, [contextMenu.visible]);
+
+
   const handleCreateClick = () => {
       navigate('/create');
-      // NEVER close quiz manager automatically - only user closes it manually
-      // handleCloseOffcanvas(); // Close sidebar after navigating
+
+
   };
 
-  // Select a quiz and navigate to home page if needed
+
   const handleQuizSelect = (id: string) => {
-      onSelectTitleItem(id); // Notify App component of selection
-      // If not on the main page, navigate there to view the quiz
+      onSelectTitleItem(id);
+
       if (location.pathname !== '/') {
           navigate('/');
       }
-      // NEVER close quiz manager automatically - only user closes it manually
-      // handleCloseOffcanvas();
+
+
   };
 
-  // Navigate to the Quiz Editor page (only if owned and logged in)
+
   const handleEditClick = () => {
       if (contextMenu.quizId && contextMenu.isOwned && currentUser) {
           navigate(`/edit/${contextMenu.quizId}`);
-          closeContextMenu(); // Close context menu
-          handleCloseOffcanvas(); // Close sidebar
+          closeContextMenu();
+          handleCloseOffcanvas();
       } else {
           console.warn("Edit attempted without ownership or login.");
           closeContextMenu();
       }
   };
 
-  // Initiate the delete process via App component (only if owned and logged in)
+
   const handleDeleteClick = () => {
       if (contextMenu.quizId && contextMenu.quizTitle && contextMenu.isOwned && currentUser) {
-          onDeleteQuiz(contextMenu.quizId, contextMenu.quizTitle); // Trigger confirmation modal in App
-          closeContextMenu(); // Close context menu
-          // Keep the sidebar open while the modal is shown
+          onDeleteQuiz(contextMenu.quizId, contextMenu.quizTitle);
+          closeContextMenu();
+
       } else {
           console.warn("Delete attempted without ownership or login.");
           closeContextMenu();
       }
   };
 
-  // Handle logout action
+
   const handleLogoutClick = async () => {
-      setIsLoggingOut(true); // Show spinner on button
+      setIsLoggingOut(true);
       try {
-          await onLogout(); // Call the logout handler passed from App
-          // Success/error message/state is handled in App component
+          await onLogout();
+
       } catch (err) {
-          // Error state is handled in App, log here if needed
+
           console.error("Logout failed in manager:", err);
       } finally {
-          setIsLoggingOut(false); // Hide spinner
-          handleCloseOffcanvas(); // Close menu after logout attempt
+          setIsLoggingOut(false);
+          handleCloseOffcanvas();
       }
   };
 
 
-  // --- Rendering Function for Quiz Lists ---
-  // Renders a list group for guest, user, or public quizzes
   const renderQuizList = (list: QuizData[], title: string, type: 'guest' | 'user' | 'public', clusterOffset: number = 0) => {
     if (list.length === 0) {
       return (
@@ -221,11 +215,11 @@ const QuizManager = ({
       );
     }
 
-    // If clustering is enabled AND FULLY initialized (both clusters + names exist AND clusters has data) AND this is not public quizzes, group quizzes by cluster
+
     if (clusterizeEnabled && clusters && clusters.length > 0 && clusterNames && Object.keys(clusterNames).length > 0 && clusterOffset >= 0) {
-      // Build clusters for this list
+
       const clusterGroups: { [key: number]: QuizData[] } = {};
-      
+
       list.forEach((quiz, idx) => {
         const clusterIdx = clusters[clusterOffset + idx];
         if (!clusterGroups[clusterIdx]) {
@@ -270,7 +264,7 @@ const QuizManager = ({
       );
     }
 
-    // Normal flat rendering when clustering is disabled
+
     return (
      <>
         {list.length > 0 && <h5 className="mt-3 mb-1 text-muted">{title}</h5>}
@@ -297,15 +291,15 @@ const QuizManager = ({
     );
   };
 
-  // --- Component Return ---
+
   return (
     <>
-      {/* Menu Toggle Button */}
+
       <Button variant="primary" style={{ position: "fixed", top: "1rem", left: "1rem", zIndex: 0 }} onClick={handleShowOffcanvas}>
         ☰ Menu
       </Button>
 
-      {/* Context Menu - Render only if needed */}
+
       {contextMenu.visible && contextMenu.isOwned && currentUser && (
           <Dropdown.Menu show style={{ position: 'absolute', left: `${contextMenu.x}px`, top: `${contextMenu.y}px`, zIndex: 1100 }}>
               <Dropdown.Header>{contextMenu.quizTitle || "Actions"}</Dropdown.Header>
@@ -316,20 +310,20 @@ const QuizManager = ({
           </Dropdown.Menu>
       )}
 
-      {/* Offcanvas Sidebar */}
+
       <Offcanvas id="offcanvasQuizManager" show={showOffcanvas} onHide={handleCloseOffcanvas} placement="start" backdrop={false} scroll={true}>
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>Quizzy Menu</Offcanvas.Title>
         </Offcanvas.Header>
         <Offcanvas.Body className="d-flex flex-column">
 
-          {/* --- Authentication Section --- */}
+
           <div className="mb-3 border-bottom pb-3">
-              {/* Conditionally render based on authLoading FIRST */}
+
               {authLoading ? (
                    <div className="text-center"><Spinner animation="border" size="sm" /> Loading User...</div>
               ) : currentUser ? (
-                  // Render Logged-in view if user exists
+
                   <div className="d-flex flex-column align-items-center">
                       {currentUser.picture && (
                           <img src={currentUser.picture} alt="User profile" referrerPolicy="no-referrer" style={{ width: '40px', height: '40px', borderRadius: '50%', marginBottom: '5px'}}/>
@@ -338,16 +332,16 @@ const QuizManager = ({
                       <Button variant="outline-secondary" size="sm" onClick={handleLogoutClick} disabled={isLoggingOut}>
                           {isLoggingOut ? <Spinner animation="border" size="sm" /> : "Logout"}
                       </Button>
-                      
+
 
                   </div>
               ) : (
-                  // Render Logged-out view ONLY if not loading AND no user
+
                   <div className="d-grid">
                       <GoogleLogin
                           onSuccess={onLoginSuccess}
                           onError={onLoginError}
-                          useOneTap={false} // Keep disabled for testing
+                          useOneTap={false}
                           theme="outline"
                           size="medium"
                        />
@@ -355,17 +349,13 @@ const QuizManager = ({
                   </div>
               )}
           </div>
-          {/* --- End Authentication Section --- */}
 
-          {/* --- Rest of the Offcanvas Body --- */}
-          {/* Ensure these sections are OUTSIDE the conditional auth rendering */}
 
-          {/* Create Quiz Button */}
           <Button variant="success" className="w-100 mb-3" onClick={handleCreateClick}>
             + Create New Quiz (AI)
           </Button>
 
-          {/* Quiz Display Options */}
+
           <div className="mb-3 border p-2 rounded bg-light">
             <Form.Label className="fw-bold small">Quiz Display Options</Form.Label>
             <Form.Check
@@ -378,40 +368,40 @@ const QuizManager = ({
             />
             <hr className="my-2"/>
             <Form.Check
-                type="switch" 
-                id="clusterize-check" 
+                type="switch"
+                id="clusterize-check"
                 label={
-                  (clusterizeEnabled && !(clusters && clusterNames)) 
+                  (clusterizeEnabled && !(clusters && clusterNames))
                     ? <>
                         <Spinner animation="border" size="sm" className="me-2" />
                         Initializing clusters...
                       </>
                     : "Clusterize Quizzes"
                 }
-                checked={clusterizeEnabled} 
+                checked={clusterizeEnabled}
                 disabled={clusterizeEnabled && !(clusters && clusterNames)}
                 onChange={() => {
                     const newState = !clusterizeEnabled;
                     setClusterizeEnabled(newState);
-                    
+
                     if (!newState) {
                        setClusters(null);
                        setClusterNames(null);
                     }
-                }} 
+                }}
                 className="small"
             />
           </div>
 
-          {/* Quiz Lists Section */}
+
            <div style={{ flexGrow: 1, overflowY: 'auto', borderTop: '1px solid #eee', paddingTop: '10px' }}>
-               {/* Conditionally render lists based on currentUser */}
+
                {!currentUser && renderQuizList(guestQuizList, "Temporary Quizzes", 'guest', 0)}
                {currentUser && renderQuizList(userQuizList, "My Quizzes", 'user', 0)}
-               {/* Public quizzes are never clustered, always flat */}
+
                {renderQuizList(publicQuizList, "Public Quizzes", 'public', -1)}
 
-               {/* Overall empty state check */}
+
                {!authLoading && guestQuizList.length === 0 && userQuizList.length === 0 && publicQuizList.length === 0 && (
                    <p className="text-center text-muted mt-3">No quizzes found. Create one!</p>
                )}
@@ -421,6 +411,6 @@ const QuizManager = ({
       </Offcanvas>
     </>
   );
-}; // End of QuizManager component
+};
 
 export default QuizManager;

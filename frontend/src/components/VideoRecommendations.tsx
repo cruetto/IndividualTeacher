@@ -6,7 +6,7 @@ interface Props {
 }
 
 const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
-    
+
     const formatTime = (seconds: number): string => {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
@@ -21,10 +21,10 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
     };
 
     return (
-        <div 
-            className="mt-4" 
-            style={{ 
-                width: '160%', 
+        <div
+            className="mt-4"
+            style={{
+                width: '160%',
                 marginLeft: 'auto',
                 marginRight: 'auto',
                 transform: 'translateX(calc(-50% + 300px))'
@@ -43,10 +43,10 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
                 <div className="list-group">
                     {recommendations.recommendations.map((rec, idx) => (
                         <div key={idx} className="list-group-item px-3 py-3 mb-2">
-                            
+
                             <div className="row gx-3">
-                                
-                                {/* Left side: Video Player */}
+
+
                                 <div className="col-md-5">
                                     <div className="ratio ratio-16x9">
                                         <iframe
@@ -59,7 +59,7 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
                                     </div>
                                 </div>
 
-                                {/* Right side: Information */}
+
                                 <div className="col-md-7">
                                     <div className="fw-bold">{rec.video_title}</div>
                                     <div className="text-muted small mt-1">
@@ -74,7 +74,7 @@ const VideoRecommendations: React.FC<Props> = ({ recommendations }) => {
                                         </span>
                                     </div>
                                 </div>
-                                
+
                             </div>
 
                         </div>

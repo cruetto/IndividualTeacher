@@ -286,6 +286,7 @@ def generate_quiz_stream():
                 "title": req_title,
                 "topic": topic,
                 "questions": questions,
+                "userId": str(user_db_id) if user_db_id else None,
             }
 
             # Save to DB if logged in
@@ -298,6 +299,7 @@ def generate_quiz_stream():
                     quizzes_collection.insert_one(quiz_document_data_to_save)
                 except Exception as db_error:
                     print(f"DB save error: {db_error}")
+                    raise
 
             progress_queue.put(json.dumps({"complete": True, "quiz": quiz_document_data}))
 

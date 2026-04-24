@@ -1,21 +1,21 @@
-// frontend/src/components/QuizCreator.tsx
+
 import React, { useState } from 'react';
 import { Form, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { QuizData } from '../interfaces/interfaces'; // Adjust path if needed
+import { QuizData } from '../interfaces/interfaces';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string; // Backend URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
 interface Props {
-  // Expects the new quiz data, or null if creation failed unexpectedly before getting data
+
   onQuizCreated: (newQuiz: QuizData | null) => void;
 }
 
 const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
     const [title, setTitle] = useState('');
     const [topic, setTopic] = useState('');
-    const [numQuestions, setNumQuestions] = useState<number | null>(5); // null = Auto mode
+    const [numQuestions, setNumQuestions] = useState<number | null>(5);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -28,11 +28,11 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
 
 
     const handleGenerateQuiz = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault(); // Prevent default form submission
+        e.preventDefault();
         setError(null);
-        setSuccessMessage(null); // Clear previous success message
+        setSuccessMessage(null);
 
-        // Basic validation
+
         if (!title.trim()) { setError("Please provide a title."); return; }
         if (!pdfFile && !topic.trim()) { setError("Please provide either topic instructions or upload a PDF document."); return; }
         if (numQuestions !== null && (numQuestions < 1 || numQuestions > 100)) { setError("Number of questions must be between 1 and 100."); return; }
@@ -60,6 +60,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                     formData,
                     { 
                         headers: { 'Content-Type': 'multipart/form-data' },
+                        withCredentials: true,
                         onDownloadProgress: (progressEvent) => {
                             if (progressEvent.total) {
                                 const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -71,9 +72,10 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
             } else {
                 console.log(`Sending request to generate quiz: Title='${title}', Topic='${topic}', NumQuestions=${numQuestions}`);
 
-                // Use real Server Sent Events stream with actual progress
+
                 const streamResponse = await fetch(`${API_BASE_URL}/api/quizzes/generate-stream`, {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         title: title.trim(),
@@ -93,7 +95,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
-                        
+
                         buffer += decoder.decode(value, { stream: true });
                         const lines = buffer.split('\n\n');
                         buffer = lines.pop() || '';
@@ -101,19 +103,19 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                         for (const line of lines) {
                             if (line.startsWith('data: ')) {
                                 const data = JSON.parse(line.substring(6));
-                                
+
                                 if (data.error) {
                                     throw new Error(data.error);
                                 }
-                                
+
                                 if (data.progress !== undefined) {
                                     setGenerationProgress(data.progress);
                                 }
-                                
+
                                 if (data.status) {
                                     setGenerationStatus(data.status);
                                 }
-                                
+
                                 if (data.complete) {
                                     finalQuiz = data.quiz;
                                 }
@@ -129,19 +131,19 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 response = { data: finalQuiz };
             }
 
-            const newQuizData = response.data; // The backend returns the created quiz
+            const newQuizData = response.data;
             console.log("Quiz generated successfully by backend:", newQuizData);
 
             setSuccessMessage(`Quiz "${newQuizData.title}" created successfully! Redirecting...`);
-            onQuizCreated(newQuizData); // Notify App.tsx and pass the data
+            onQuizCreated(newQuizData);
 
-           
+
             setTimeout(() => {
-                if (newQuizData) { // Check if still valid before navigating
-                    navigate('/'); // Navigate home
+                if (newQuizData) {
+                    navigate('/');
                 }
-            }, 1000); // Small delay (e.g., 100ms)
-            // navigate('/'); 
+            }, 1000);
+
 
         } catch (err) {
             console.error("Error creating quiz:", err);
@@ -152,7 +154,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 message = err.message;
             }
             setError(message);
-             onQuizCreated(null); // Notify App creation failed (or didn't return data)
+             onQuizCreated(null);
         } finally {
             setIsLoading(false);
         }
@@ -167,7 +169,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                         Enter a title and topic. The AI will generate multiple-choice questions based on the topic.
                     </p>
 
-                    {/* Place messages above the form */}
+
                     {error && <Alert variant="danger" onClose={() => setError(null)} dismissible>{error}</Alert>}
                     {successMessage && <Alert variant="success">{successMessage}</Alert>}
 
@@ -221,7 +223,6 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 </div>
             )}
         </Form.Group>
-
 
 
                         <Form.Group className="mb-3" controlId="numQuestions">
@@ -280,9 +281,9 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                                     <span className="text-muted small">{Math.round(generationProgress)}%</span>
                                 </div>
                                 <div className="progress" style={{height: '8px'}}>
-                                    <div 
-                                        className="progress-bar progress-bar-striped progress-bar-animated" 
-                                        role="progressbar" 
+                                    <div
+                                        className="progress-bar progress-bar-striped progress-bar-animated"
+                                        role="progressbar"
                                         style={{width: `${generationProgress}%`}}
                                         aria-valuenow={generationProgress}
                                         aria-valuemin={0}
@@ -293,7 +294,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                             </div>
                         )}
 
-                        <div className="d-grid"> {/* Makes button full width */}
+                        <div className="d-grid">
                             <Button variant="primary" type="submit" disabled={isLoading}>
                                 {isLoading ? (
                                     <>

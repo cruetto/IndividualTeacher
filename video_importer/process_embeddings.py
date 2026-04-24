@@ -64,12 +64,12 @@ def get_cached_transcript(video_id: str) -> Optional[Dict]:
 def chunk_transcript(transcript_segments: List[Dict]) -> List[Dict]:
     """
     ✅ New chunking algorithm:
-    1. Chunk by accumulated duration, max 20 seconds per chunk
+    1. Chunk by accumulated duration, max 10 seconds per chunk
     2. Uses actual segment timings instead of word count
     3. Creates trigram context: every chunk includes previous + current + next
     4. No overlapping timings, continuous context window
     """
-    # First pass: build base chunks grouped by 20 seconds maximum
+    # First pass: build base chunks grouped by 10 seconds maximum
     base_chunks = []
     current_chunk = []
     current_duration = 0
