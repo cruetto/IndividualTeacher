@@ -1,14 +1,17 @@
 import traceback
 import uuid
 import json
+import logging
+import time
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from bson import ObjectId
 
 from config import get_db, get_current_user_db_id
-from core.llm import get_llm_client, generate_quiz, extract_facts, generate_question_for_fact
+from core.quiz_generation import generate_smart_quiz
 
 quiz_routes = Blueprint('quizzes', __name__)
+logger = logging.getLogger(__name__)
 
 
 @quiz_routes.route('/api/quizzes', methods=['GET'])
@@ -229,84 +232,235 @@ def get_models():
     return jsonify(get_available_groq_models())
 
 
+def _parse_required_int(value, field_name):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid '{field_name}'.")
+
+
+def _parse_generation_request():
+    payload = request.form
+    pdf_file = request.files.get('pdf')
+
+    pdf_filename = None
+    pdf_bytes = None
+    if pdf_file and pdf_file.filename:
+        if not pdf_file.filename.lower().endswith('.pdf'):
+            raise ValueError("File must be a PDF document")
+        pdf_filename = pdf_file.filename
+        pdf_bytes = pdf_file.read()
+        if not pdf_bytes:
+            raise ValueError("PDF file is empty")
+
+    title = str(payload.get('title') or '').strip()
+    if not title and pdf_filename:
+        title = pdf_filename.rsplit('.', 1)[0]
+
+    topic = str(
+        payload.get('topic')
+        or payload.get('instructions')
+        or ''
+    ).strip()
+
+    if not title:
+        raise ValueError("Missing 'title'")
+    if not topic and not pdf_bytes:
+        raise ValueError("Provide topic instructions or upload a PDF document.")
+
+    num_questions = _parse_required_int(payload.get('num_questions'), 'num_questions')
+    difficulty = _parse_required_int(payload.get('difficulty', 3), 'difficulty')
+
+    if not 1 <= num_questions <= 150:
+        raise ValueError("Invalid 'num_questions' (1-150).")
+    if not 1 <= difficulty <= 5:
+        raise ValueError("Invalid 'difficulty' (1-5).")
+
+    return {
+        "request_id": str(uuid.uuid4())[:8],
+        "title": title,
+        "topic": topic,
+        "num_questions": num_questions,
+        "difficulty": difficulty,
+        "language": str(payload.get('language') or "English").strip() or "English",
+        "source_type": "pdf" if pdf_bytes else "topic",
+        "source_document": pdf_filename,
+        "pdf_bytes": pdf_bytes,
+    }
+
+
+def _queue_event(progress_queue, payload):
+    if payload.get("error"):
+        logger.error("Quiz generation stream error: %s", payload["error"])
+    elif payload.get("status"):
+        logger.info(
+            "Quiz generation progress: %s%% - %s",
+            payload.get("progress", "?"),
+            payload["status"],
+        )
+
+    progress_queue.put(json.dumps(payload, ensure_ascii=False))
+
+
+def _prepare_source_content(generation_request, progress_queue=None):
+    topic = generation_request["topic"]
+
+    if generation_request["pdf_bytes"]:
+        logger.info(
+            "[%s] Preparing PDF source '%s'",
+            generation_request["request_id"],
+            generation_request["source_document"],
+        )
+        if progress_queue:
+            _queue_event(progress_queue, {
+                "progress": 10,
+                "status": "Processing PDF document"
+            })
+
+        from core.pdf_processor import PDFProcessor
+        pdf_processor = PDFProcessor()
+        document_text = pdf_processor.process_pdf(generation_request["pdf_bytes"])
+        logger.info(
+            "[%s] PDF source extracted: %s characters",
+            generation_request["request_id"],
+            len(document_text),
+        )
+
+        if progress_queue:
+            _queue_event(progress_queue, {
+                "progress": 20,
+                "status": "PDF content extracted"
+            })
+
+        source_parts = []
+        if topic:
+            source_parts.append(f"TOPIC / INSTRUCTIONS:\n{topic}")
+        source_parts.append(f"DOCUMENT CONTENT:\n{document_text}")
+        return "\n\n".join(source_parts)
+
+    if progress_queue:
+        _queue_event(progress_queue, {
+            "progress": 10,
+            "status": "Preparing topic instructions"
+        })
+    logger.info("[%s] Preparing topic-only source", generation_request["request_id"])
+    return f"TOPIC / INSTRUCTIONS:\n{topic}"
+
+
+def _generate_questions_for_request(generation_request, progress_queue=None):
+    logger.info(
+        "[%s] Starting smart quiz generation: source=%s, questions=%s, difficulty=%s, language=%s",
+        generation_request["request_id"],
+        generation_request["source_type"],
+        generation_request["num_questions"],
+        generation_request["difficulty"],
+        generation_request["language"],
+    )
+    started_at = time.monotonic()
+    source_content = _prepare_source_content(generation_request, progress_queue)
+
+    def report_progress(progress, status):
+        if progress_queue:
+            _queue_event(progress_queue, {
+                "progress": progress,
+                "status": status
+            })
+
+    questions = generate_smart_quiz(
+        source_content=source_content,
+        source_type=generation_request["source_type"],
+        question_count=generation_request["num_questions"],
+        difficulty=generation_request["difficulty"],
+        language=generation_request["language"],
+        progress_callback=report_progress,
+    )
+    logger.info(
+        "[%s] Smart quiz generation finished: %s questions in %.1fs",
+        generation_request["request_id"],
+        len(questions),
+        time.monotonic() - started_at,
+    )
+    return questions
+
+
+def _build_quiz_document(generation_request, questions, user_db_id):
+    quiz_document_data = {
+        "id": str(uuid.uuid4()),
+        "title": generation_request["title"],
+        "topic": generation_request["topic"],
+        "source_type": generation_request["source_type"],
+        "questions": questions,
+        "userId": str(user_db_id) if user_db_id else None,
+    }
+
+    if generation_request["source_document"]:
+        quiz_document_data["source_document"] = generation_request["source_document"]
+
+    return quiz_document_data
+
+
+def _save_quiz_for_user(quiz_document_data, user_db_id):
+    if not user_db_id:
+        logger.info("Generated quiz for guest; skipping database save")
+        return
+
+    db = get_db()
+    quizzes_collection = db.quizzes
+    quiz_document_data_to_save = quiz_document_data.copy()
+    quiz_document_data_to_save['userId'] = user_db_id
+    quizzes_collection.insert_one(quiz_document_data_to_save)
+    logger.info(
+        "Saved generated quiz %s for user %s",
+        quiz_document_data["id"],
+        user_db_id,
+    )
+
+
 
 
 @quiz_routes.route('/api/quizzes/generate-stream', methods=['POST'])
 def generate_quiz_stream():
-    """Stream quiz generation progress with real Server Sent Events"""
+    """Stream quiz generation progress for topic-only and PDF-backed quizzes."""
     from flask import Response
     import queue
     import threading
 
     user_db_id = get_current_user_db_id() 
-    is_guest = user_db_id is None
-    
-    data = request.get_json()
-    if not data or not data.get('title') or not data.get('topic'):
-        return jsonify({"error": "Missing 'title' or 'topic'"}), 400
-    
-    req_title = data['title']
-    topic = data['topic']
-    num_questions = data.get('num_questions', 5)
-    difficulty = data.get('difficulty', 3)
-    language = data.get('language', "English")
-    
-    if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
-        return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
-    if not isinstance(difficulty, int) or not 1 <= difficulty <= 5:
-        return jsonify({"error": "Invalid 'difficulty' (1-5)."}), 400
+
+    try:
+        generation_request = _parse_generation_request()
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    logger.info(
+        "[%s] Received quiz generation request: title='%s', source=%s, document=%s",
+        generation_request["request_id"],
+        generation_request["title"],
+        generation_request["source_type"],
+        generation_request["source_document"] or "none",
+    )
 
     progress_queue = queue.Queue()
 
     def generate():
         try:
-            # Step 1: Extract facts - 40%
-            facts = extract_facts(topic, num_questions, language)
-            
-            if num_questions is not None:
-                facts = facts[:num_questions]
-            
-            # Step 2: Generate each question - remaining 60%
-            questions = []
-            for idx, fact in enumerate(facts):
-                try:
-                    questions.append(generate_question_for_fact(fact, difficulty, language))
-                except Exception:
-                    pass
-                
-                current_progress = int(((idx + 1) / len(facts)) * 100)
-                progress_queue.put(json.dumps({
-                    "progress": current_progress, 
-                    "status": f"{idx + 1} / {len(facts)}"
-                }))
-            
-            # Build final quiz
-            quiz_document_data = {
-                "id": str(uuid.uuid4()),
-                "title": req_title,
-                "topic": topic,
-                "questions": questions,
-                "userId": str(user_db_id) if user_db_id else None,
-            }
+            logger.info("[%s] Background generation thread started", generation_request["request_id"])
+            questions = _generate_questions_for_request(generation_request, progress_queue)
+            quiz_document_data = _build_quiz_document(generation_request, questions, user_db_id)
+            _save_quiz_for_user(quiz_document_data, user_db_id)
 
-            # Save to DB if logged in
-            if not is_guest:
-                db = get_db()
-                quizzes_collection = db.quizzes
-                quiz_document_data_to_save = quiz_document_data.copy() 
-                quiz_document_data_to_save['userId'] = user_db_id
-                try:
-                    quizzes_collection.insert_one(quiz_document_data_to_save)
-                except Exception as db_error:
-                    print(f"DB save error: {db_error}")
-                    raise
-
-            progress_queue.put(json.dumps({"complete": True, "quiz": quiz_document_data}))
+            _queue_event(progress_queue, {
+                "progress": 100,
+                "status": "Quiz generated",
+                "complete": True,
+                "quiz": quiz_document_data
+            })
 
         except Exception as e:
+            logger.exception("[%s] Quiz generation failed", generation_request["request_id"])
             traceback.print_exc()
-            progress_queue.put(json.dumps({"error": str(e)}))
+            _queue_event(progress_queue, {"error": str(e)})
         finally:
+            logger.info("[%s] Background generation thread finished", generation_request["request_id"])
             progress_queue.put(None)
 
     # Start generation in background thread
@@ -321,98 +475,3 @@ def generate_quiz_stream():
             yield f"data: {msg}\n\n"
     
     return Response(stream_response(), mimetype='text/event-stream')
-
-
-@quiz_routes.route('/api/quizzes/generate-from-pdf', methods=['POST'])
-def generate_quiz_from_pdf():
-    """Generates a quiz from an uploaded PDF document"""
-    user_db_id = get_current_user_db_id()
-    is_guest = user_db_id is None
-    print(f"POST /api/quizzes/generate-from-pdf request received. UserID: {user_db_id} (Guest: {is_guest})")
-
-    llm_client = get_llm_client()
-    if not llm_client:
-        return jsonify({"error": "AI service is not configured."}), 503
-
-    try:
-        if 'pdf' not in request.files:
-            return jsonify({"error": "No PDF file provided"}), 400
-            
-        pdf_file = request.files['pdf']
-        if pdf_file.filename == '':
-            return jsonify({"error": "No selected file"}), 400
-            
-        if not pdf_file.filename.lower().endswith('.pdf'):
-            return jsonify({"error": "File must be a PDF document"}), 400
-
-        title = request.form.get('title', pdf_file.filename.rsplit('.', 1)[0])
-        topic = request.form.get('topic', '')
-        num_questions = request.form.get('num_questions')
-        if num_questions is not None:
-            num_questions = int(num_questions)
-        else:
-            # None = Auto mode (extract all facts)
-            num_questions = None
-        
-        if num_questions is not None and (not isinstance(num_questions, int) or not 1 <= num_questions <= 150):
-            return jsonify({"error": "Invalid 'num_questions' (1-150)."}), 400
-
-        print(f"Processing PDF file: {pdf_file.filename} with topic: {topic}")
-        
-        # Process PDF with our processor
-        from core.pdf_processor import PDFProcessor
-        pdf_processor = PDFProcessor()
-        document_text = pdf_processor.process_pdf(pdf_file.read())
-        
-        print(f"PDF processed successfully, generated {len(document_text)} characters")
-
-        # Combine topic instructions with document content
-        full_content = f"TOPIC / INSTRUCTIONS: {topic}\n\nDOCUMENT CONTENT:\n{document_text}"
-        
-        language = request.form.get('language', "English")
-        questions = generate_quiz(full_content, num_questions, 3, language)
-        print(f"Successfully generated {len(questions)} questions from PDF.")
-
-        quiz_document_data = {
-            "id": str(uuid.uuid4()),
-            "title": title,
-            "topic": topic,
-            "source_document": pdf_file.filename,
-            "questions": questions,
-        }
-
-        if not is_guest:
-            db = get_db()
-            quizzes_collection = db.quizzes
-            quiz_document_data_to_save = quiz_document_data.copy() 
-            quiz_document_data_to_save['userId'] = user_db_id
-            try:
-                insert_result = quizzes_collection.insert_one(quiz_document_data_to_save)
-                print(f"Saved generated quiz from PDF to DB. ID: {quiz_document_data['id']}, UserID: {user_db_id}")
-
-                saved_quiz_from_db = quizzes_collection.find_one({"id": quiz_document_data['id']})
-                if not saved_quiz_from_db: raise Exception("Failed to retrieve saved quiz.")
-
-                response_data = {}
-                for key, value in saved_quiz_from_db.items():
-                    if isinstance(value, ObjectId):
-                        response_data[key] = str(value)
-                    else:
-                        response_data[key] = value
-                response_data.pop('_id', None) 
-                print(f"Returning saved quiz data for user. Quiz ID: {response_data['id']}")
-                return jsonify(response_data), 201
-
-            except Exception as db_error:
-                 print(f"Error saving generated quiz to DB for user {user_db_id}: {db_error}")
-                 traceback.print_exc()
-                 return jsonify({"error": "Failed to save generated quiz."}), 500
-        else:
-            print(f"Generated quiz from PDF for GUEST (not saved). ID: {quiz_document_data['id']}")
-            quiz_document_data['userId'] = None
-            return jsonify(quiz_document_data), 200 
-
-    except Exception as e:
-        print(f"Unexpected error in /api/quizzes/generate-from-pdf: {e}")
-        traceback.print_exc()
-        return jsonify({"error": f"Server error processing PDF: {str(e)}"}), 500

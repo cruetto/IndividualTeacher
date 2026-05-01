@@ -17,6 +17,8 @@ export interface QuizData {
     id: string;
     title: string;
     topic?: string;
+    source_type?: 'topic' | 'pdf';
+    source_document?: string;
     questions: Question[];
     userId?: string | null;
 

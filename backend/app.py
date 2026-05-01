@@ -1,4 +1,5 @@
 import os
+import logging
 import threading
 import time
 from flask import Flask
@@ -12,6 +13,14 @@ from api.recommendations import recommendation_routes
 
 clustering_started = False
 clustering_lock = threading.Lock()
+
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+for noisy_logger in ("groq", "httpx", "httpcore"):
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 
 def trigger_clustering_lazy():

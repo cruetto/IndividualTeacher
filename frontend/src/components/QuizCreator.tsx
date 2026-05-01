@@ -1,7 +1,6 @@
 
 import React, { useState } from 'react';
 import { Form, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { QuizData } from '../interfaces/interfaces';
 
@@ -15,7 +14,7 @@ interface Props {
 const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
     const [title, setTitle] = useState('');
     const [topic, setTopic] = useState('');
-    const [numQuestions, setNumQuestions] = useState<number | null>(5);
+    const [numQuestions, setNumQuestions] = useState(5);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -35,103 +34,95 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
 
         if (!title.trim()) { setError("Please provide a title."); return; }
         if (!pdfFile && !topic.trim()) { setError("Please provide either topic instructions or upload a PDF document."); return; }
-        if (numQuestions !== null && (numQuestions < 1 || numQuestions > 100)) { setError("Number of questions must be between 1 and 100."); return; }
+        if (numQuestions < 1 || numQuestions > 150) { setError("Number of questions must be between 1 and 150."); return; }
 
         setIsLoading(true);
         setGenerationProgress(0);
         setGenerationStatus("");
 
         try {
-            let response;
-
+            const formData = new FormData();
+            formData.append('title', title.trim());
+            formData.append('topic', topic.trim());
+            formData.append('difficulty', difficulty.toString());
+            formData.append('language', language);
+            formData.append('num_questions', numQuestions.toString());
             if (pdfFile) {
-                console.log(`Generating quiz with topic + PDF: ${pdfFile.name}`);
-                const formData = new FormData();
                 formData.append('pdf', pdfFile);
-                formData.append('title', title.trim());
-                formData.append('topic', topic.trim());
-                formData.append('language', language);
-                if (numQuestions !== null) {
-                    formData.append('num_questions', numQuestions.toString());
-                }
-
-                response = await axios.post<QuizData>(
-                    `${API_BASE_URL}/api/quizzes/generate-from-pdf`,
-                    formData,
-                    { 
-                        headers: { 'Content-Type': 'multipart/form-data' },
-                        withCredentials: true,
-                        onDownloadProgress: (progressEvent) => {
-                            if (progressEvent.total) {
-                                const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-                                setGenerationProgress(percent);
-                            }
-                        }
-                    }
-                );
-            } else {
-                console.log(`Sending request to generate quiz: Title='${title}', Topic='${topic}', NumQuestions=${numQuestions}`);
-
-
-                const streamResponse = await fetch(`${API_BASE_URL}/api/quizzes/generate-stream`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: title.trim(),
-                        topic: topic.trim(),
-                        num_questions: numQuestions,
-                        difficulty: difficulty,
-                        language: language
-                    })
-                });
-
-                const reader = streamResponse.body?.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                let finalQuiz: any = null;
-
-                if (reader) {
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n\n');
-                        buffer = lines.pop() || '';
-
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                const data = JSON.parse(line.substring(6));
-
-                                if (data.error) {
-                                    throw new Error(data.error);
-                                }
-
-                                if (data.progress !== undefined) {
-                                    setGenerationProgress(data.progress);
-                                }
-
-                                if (data.status) {
-                                    setGenerationStatus(data.status);
-                                }
-
-                                if (data.complete) {
-                                    finalQuiz = data.quiz;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!finalQuiz) {
-                    throw new Error("No quiz data received");
-                }
-
-                response = { data: finalQuiz };
             }
 
-            const newQuizData = response.data;
+            const streamResponse = await fetch(`${API_BASE_URL}/api/quizzes/generate-stream`, {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
+            });
+
+            if (!streamResponse.ok) {
+                const errorText = await streamResponse.text();
+                let parsedError: { error?: string } | null = null;
+                try {
+                    parsedError = JSON.parse(errorText);
+                } catch {
+                    parsedError = null;
+                }
+                throw new Error(parsedError?.error || errorText || "Failed to create quiz via AI.");
+            }
+
+            const reader = streamResponse.body?.getReader();
+            if (!reader) {
+                throw new Error("No quiz generation stream received");
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const finalQuizRef: { current: QuizData | null } = { current: null };
+
+            const processStreamEvent = (eventText: string) => {
+                if (!eventText.startsWith('data: ')) {
+                    return;
+                }
+
+                const data = JSON.parse(eventText.substring(6));
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (data.progress !== undefined) {
+                    setGenerationProgress(data.progress);
+                }
+
+                if (data.status) {
+                    setGenerationStatus(data.status);
+                }
+
+                if (data.complete) {
+                    finalQuizRef.current = data.quiz;
+                }
+            };
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || '';
+
+                for (const eventText of events) {
+                    processStreamEvent(eventText);
+                }
+            }
+
+            if (buffer.trim()) {
+                processStreamEvent(buffer.trim());
+            }
+
+            if (!finalQuizRef.current) {
+                throw new Error("No quiz data received");
+            }
+
+            const newQuizData = finalQuizRef.current;
             console.log("Quiz generated successfully by backend:", newQuizData);
 
             setSuccessMessage(`Quiz "${newQuizData.title}" created successfully! Redirecting...`);
@@ -148,9 +139,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
         } catch (err) {
             console.error("Error creating quiz:", err);
             let message = 'Failed to create quiz via AI.';
-            if (axios.isAxiosError(err)) {
-                message = err.response?.data?.error || `Network error or backend unavailable (${err.message})`;
-            } else if (err instanceof Error) {
+            if (err instanceof Error) {
                 message = err.message;
             }
             setError(message);
@@ -166,7 +155,7 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                 <Col md={8} lg={7}>
                     <h2 className="mb-3 text-center">Create Quiz with AI</h2>
                     <p className="text-center text-muted mb-4">
-                        Enter a title and topic. The AI will generate multiple-choice questions based on the topic.
+                        Enter a title and topic instructions, optionally with a PDF document.
                     </p>
 
 
@@ -228,19 +217,13 @@ const QuizCreator: React.FC<Props> = ({ onQuizCreated }) => {
                         <Form.Group className="mb-3" controlId="numQuestions">
                             <Form.Label>Number of Questions</Form.Label>
                             <Form.Select
-                                value={numQuestions === null ? "auto" : numQuestions}
+                                value={numQuestions}
                                 onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (val === "auto") {
-                                        setNumQuestions(null);
-                                    } else {
-                                        setNumQuestions(parseInt(val, 10));
-                                    }
+                                    setNumQuestions(parseInt(e.target.value, 10));
                                 }}
                                 disabled={isLoading}
                             >
-                                <option value="auto">Auto (Extract all facts)</option>
-                                {Array.from({length: 100}, (_, i) => i + 1).map(n => (
+                                {Array.from({length: 150}, (_, i) => i + 1).map(n => (
                                     <option key={n} value={n}>{n} Questions</option>
                                 ))}
                             </Form.Select>
