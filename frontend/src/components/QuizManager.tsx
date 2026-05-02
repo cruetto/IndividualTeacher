@@ -68,6 +68,19 @@ const QuizManager = ({
   const [clusters, setClusters] = useState<number[] | null>(null);
   const [clusterNames, setClusterNames] = useState<{[key: number]: string} | null>(null);
 
+  const buildClusterPayload = (quiz: QuizData) => ({
+    title: quiz.title,
+    questions: quiz.questions.map((question) => ({
+      question_text: question.question_text,
+      answers: question.answers
+        .filter((answer) => answer.is_correct)
+        .map((answer) => ({
+          answer_text: answer.answer_text,
+          is_correct: true,
+        })),
+    })),
+  });
+
 
   useEffect(() => {
 
@@ -90,7 +103,7 @@ const QuizManager = ({
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ titles: activeList.map(q => q.title) })
+          body: JSON.stringify({ quizzes: activeList.map(buildClusterPayload) })
         });
         let data = response.ok ? await response.json() : null;
 
@@ -99,7 +112,7 @@ const QuizManager = ({
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ titles: activeList.map(q => q.title) })
+            body: JSON.stringify({ quizzes: activeList.map(buildClusterPayload) })
           });
           data = response.ok ? await response.json() : null;
         }

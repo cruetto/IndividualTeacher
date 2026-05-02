@@ -3,7 +3,11 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from config import get_current_user_db_id
-from core.embeddings import generate_embeddings, cluster_quiz_titles
+from core.embeddings import (
+    build_quiz_clustering_texts,
+    cluster_quiz_titles,
+    generate_embeddings,
+)
 from core.database import find_similar_videos, video_exists, add_video_embeddings, get_video_count
 from core.llm import get_llm_client
 
@@ -125,6 +129,22 @@ def get_list_hash(items: list) -> str:
     return hashlib.sha256('\n'.join(items).encode()).hexdigest()
 
 
+def _extract_cluster_inputs(data):
+    quiz_items = data.get('quizzes')
+    if isinstance(quiz_items, list) and quiz_items:
+        titles = [
+            str(item.get('title', '')).strip() or 'Untitled Quiz'
+            for item in quiz_items
+        ]
+        clustering_texts = build_quiz_clustering_texts(quiz_items)
+        return titles, clustering_texts
+
+    titles = data.get('titles', [])
+    if not isinstance(titles, list):
+        titles = []
+    return titles, build_quiz_clustering_texts(titles)
+
+
 @recommendation_routes.route('/api/cluster-quizzes/clusterize', methods=['POST'])
 def cluster_quizzes_full():
     """
@@ -134,7 +154,7 @@ def cluster_quizzes_full():
     """
     try:
         data = request.get_json()
-        titles = data.get('titles', [])
+        titles, clustering_texts = _extract_cluster_inputs(data or {})
         
         user_id = get_current_user_db_id() or "guest"
         
@@ -147,7 +167,7 @@ def cluster_quizzes_full():
                 "clusters": [0] * len(titles),
                 "count": 1,
                 "names": {0: "Quizzes"},
-                "hash": get_list_hash(titles)
+                "hash": get_list_hash(clustering_texts)
             }
             _cluster_cache[user_id] = result
             return jsonify(result)
@@ -156,7 +176,7 @@ def cluster_quizzes_full():
         from core.llm import get_llm_client
         
         # Generate fresh clusters just for this exact list
-        clusters = cluster_quiz_titles(titles)
+        clusters = cluster_quiz_titles(clustering_texts)
         
         print(f"[CLUSTER FULL] Generated clusters: {clusters}")
         
@@ -191,7 +211,7 @@ def cluster_quizzes_full():
             "clusters": clusters,
             "count": cluster_count,
             "names": cluster_names,
-            "hash": get_list_hash(titles)
+            "hash": get_list_hash(clustering_texts)
         }
         
         # Cache this result permanently for this user
@@ -215,11 +235,11 @@ def cluster_quizzes_extract():
     """
     try:
         data = request.get_json()
-        titles = data.get('titles', [])
+        _, clustering_texts = _extract_cluster_inputs(data or {})
         
         user_id = get_current_user_db_id() or "guest"
         
-        current_hash = get_list_hash(titles)
+        current_hash = get_list_hash(clustering_texts)
         
         if user_id in _cluster_cache and _cluster_cache[user_id]['hash'] == current_hash:
             print(f"[CLUSTER EXTRACT] Returning cached result for user {user_id}")

@@ -36,6 +36,41 @@ def generate_embeddings(texts):
     return normalized
 
 
+def build_quiz_clustering_text(quiz_item):
+    if isinstance(quiz_item, str):
+        return quiz_item.strip()
+
+    if not isinstance(quiz_item, dict):
+        return ""
+
+    parts = []
+
+    title = str(quiz_item.get("title", "")).strip()
+    if title:
+        parts.append(f"Title: {title}")
+
+    for question in quiz_item.get("questions", []) or []:
+        question_text = str(question.get("question_text", "")).strip()
+        if question_text:
+            parts.append(f"Question: {question_text}")
+
+        correct_answers = []
+        for answer in question.get("answers", []) or []:
+            if answer.get("is_correct"):
+                answer_text = str(answer.get("answer_text", "")).strip()
+                if answer_text:
+                    correct_answers.append(answer_text)
+
+        for answer_text in correct_answers:
+            parts.append(f"Correct answer: {answer_text}")
+
+    return "\n".join(parts)
+
+
+def build_quiz_clustering_texts(quiz_items):
+    return [build_quiz_clustering_text(item) for item in quiz_items]
+
+
 def run_full_clustering():
     global clusters, cluster_names, quiz_count_when_clustered
 
@@ -45,7 +80,8 @@ def run_full_clustering():
         db = get_db()
 
         quizzes = list(db.quizzes.find({"userId": {"$ne": None}}))
-        titles = [q['title'] for q in quizzes]
+        titles = [q.get('title', 'Untitled Quiz') for q in quizzes]
+        clustering_texts = build_quiz_clustering_texts(quizzes)
 
         if not titles:
             return 0
@@ -53,7 +89,7 @@ def run_full_clustering():
         if quiz_count_when_clustered == len(titles) and clusters is not None:
             return len(set(clusters))
 
-        clusters = cluster_quiz_titles(titles)
+        clusters = cluster_quiz_titles(clustering_texts)
         cluster_count = len(set(clusters))
 
         from core.llm import get_llm_client
@@ -90,18 +126,20 @@ def run_full_clustering():
         traceback.print_exc()
 
 
-def cluster_quiz_titles(quiz_titles):
-    if len(quiz_titles) <= 1:
-        return [0] * len(quiz_titles)
+def cluster_quiz_titles(quiz_items):
+    if len(quiz_items) <= 1:
+        return [0] * len(quiz_items)
+
+    clustering_texts = build_quiz_clustering_texts(quiz_items)
     
-    embeddings = generate_embeddings(quiz_titles)
+    embeddings = generate_embeddings(clustering_texts)
     
     from sklearn.cluster import KMeans
     import numpy as np
     
     X = np.array(embeddings)
     
-    max_k = min(10, len(quiz_titles) - 1)
+    max_k = min(10, len(clustering_texts) - 1)
     wcss = []
     
     for k in range(1, max_k + 1):
@@ -121,8 +159,8 @@ def cluster_quiz_titles(quiz_titles):
             second_deltas = np.diff(deltas)
             optimal_k = np.argmax(second_deltas) + 2
         
-        min_clusters = max(2, int(len(quiz_titles) / 6))
-        max_clusters = min(max_k, int(len(quiz_titles) / 2.5))
+        min_clusters = max(2, int(len(clustering_texts) / 6))
+        max_clusters = min(max_k, int(len(clustering_texts) / 2.5))
         
         optimal_k = max(optimal_k, min_clusters)
         optimal_k = min(optimal_k, max_clusters)

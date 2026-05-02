@@ -11,7 +11,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 import pytest
 from flask import Flask
 import api.quizzes as quiz_api
+import api.recommendations as recommendation_api
+import api.chat as chat_api
 from api.quizzes import quiz_routes
+from api.recommendations import recommendation_routes
+from api.chat import chat_routes
 from core.pdf_processor import PDFProcessor
 from core.quiz_generation import (
     create_distractor_generation_prompt,
@@ -24,7 +28,11 @@ from core.llm import (
     get_available_groq_models,
     get_llm_client,
 )
-from core.embeddings import EMBEDDING_DIMENSION, generate_embeddings
+from core.embeddings import (
+    EMBEDDING_DIMENSION,
+    build_quiz_clustering_text,
+    generate_embeddings,
+)
 
 
 RUN_EXTERNAL_API_TESTS = os.environ.get("RUN_EXTERNAL_API_TESTS") == "1"
@@ -66,6 +74,29 @@ class _FailingCompletions:
     def create(self, **kwargs):
         self.calls += 1
         raise RuntimeError("model_decommissioned")
+
+
+class _FakeCollection:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def find(self, query):
+        def matches(doc):
+            return all(doc.get(key) == value for key, value in query.items())
+
+        return [doc for doc in self.documents if matches(doc)]
+
+
+class _FakeDb:
+    def __init__(self, quiz_documents):
+        self.quizzes = _FakeCollection(quiz_documents)
+
+
+def _create_app(*blueprints):
+    app = Flask(__name__)
+    for blueprint in blueprints:
+        app.register_blueprint(blueprint)
+    return app
 
 
 class TestExternalAPIs:
@@ -237,8 +268,7 @@ class TestExternalAPIs:
     def test_generate_stream_requires_explicit_question_count(self, monkeypatch):
         monkeypatch.setattr(quiz_api, "get_current_user_db_id", lambda: None)
 
-        app = Flask(__name__)
-        app.register_blueprint(quiz_routes)
+        app = _create_app(quiz_routes)
 
         response = app.test_client().post(
             "/api/quizzes/generate-stream",
@@ -254,8 +284,7 @@ class TestExternalAPIs:
         assert response.get_json()["error"] == "Invalid 'num_questions'."
 
     def test_legacy_pdf_endpoint_is_removed(self):
-        app = Flask(__name__)
-        app.register_blueprint(quiz_routes)
+        app = _create_app(quiz_routes)
 
         response = app.test_client().post(
             "/api/quizzes/generate-from-pdf",
@@ -342,6 +371,248 @@ class TestExternalAPIs:
 
         assert "Visible PDF text" in document_text
         assert "VISUAL DESCRIPTION" not in document_text
+
+    def test_get_models_returns_available_models(self, monkeypatch):
+        monkeypatch.setattr(
+            "core.llm.get_available_groq_models",
+            lambda: [{"id": "llama-3.3-70b-versatile", "context_window": 128000}],
+        )
+
+        app = _create_app(quiz_routes)
+        response = app.test_client().get("/api/models")
+
+        assert response.status_code == 200
+        assert response.get_json()[0]["id"] == "llama-3.3-70b-versatile"
+
+    def test_get_quizzes_public_scope_returns_public_quizzes(self, monkeypatch):
+        fake_db = _FakeDb([
+            {"_id": "mongo1", "id": "quiz-public", "title": "Public quiz", "userId": None},
+            {"_id": "mongo2", "id": "quiz-private", "title": "Private quiz", "userId": "user-1"},
+        ])
+        monkeypatch.setattr(quiz_api, "get_db", lambda: fake_db)
+        monkeypatch.setattr(quiz_api, "get_current_user_db_id", lambda: None)
+
+        app = _create_app(quiz_routes)
+        response = app.test_client().get("/api/quizzes?scope=public")
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload == [{"id": "quiz-public", "title": "Public quiz", "userId": None}]
+
+    def test_get_quizzes_my_scope_requires_authentication(self, monkeypatch):
+        monkeypatch.setattr(quiz_api, "get_current_user_db_id", lambda: None)
+        monkeypatch.setattr(quiz_api, "get_db", lambda: _FakeDb([]))
+
+        app = _create_app(quiz_routes)
+        response = app.test_client().get("/api/quizzes?scope=my")
+
+        assert response.status_code == 401
+        assert "Authentication required" in response.get_json()["error"]
+
+    def test_get_quizzes_rejects_invalid_scope(self, monkeypatch):
+        monkeypatch.setattr(quiz_api, "get_current_user_db_id", lambda: None)
+        monkeypatch.setattr(quiz_api, "get_db", lambda: _FakeDb([]))
+
+        app = _create_app(quiz_routes)
+        response = app.test_client().get("/api/quizzes?scope=weird")
+
+        assert response.status_code == 400
+        assert "Invalid scope parameter" in response.get_json()["error"]
+
+    def test_recommendations_endpoint_returns_timestamped_results(self, monkeypatch):
+        monkeypatch.setattr(recommendation_api, "generate_embeddings", lambda texts: [[0.1, 0.2]])
+        monkeypatch.setattr(
+            recommendation_api,
+            "find_similar_videos",
+            lambda embedding, limit, min_score: [
+                {
+                    "video_id": "abc123",
+                    "video_title": "Binary Search",
+                    "text": "Binary search cuts the range in half.",
+                    "start": 30.0,
+                    "end": 40.0,
+                    "score": 0.91234,
+                }
+            ],
+        )
+
+        app = _create_app(recommendation_routes)
+        response = app.test_client().post(
+            "/api/recommendations",
+            json={
+                "incorrect_questions": [
+                    {
+                        "id": "q1",
+                        "question_text": "What is binary search?",
+                        "correct_answer": "A divide and conquer search algorithm",
+                        "user_answer": "A sorting algorithm",
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["q1"]["recommendations"][0]["youtube_url"].endswith("abc123&t=30")
+        assert payload["q1"]["recommendations"][0]["relevance_score"] == 0.9123
+
+    def test_recommendations_endpoint_requires_question_array(self):
+        app = _create_app(recommendation_routes)
+        response = app.test_client().post("/api/recommendations", json={})
+
+        assert response.status_code == 400
+        assert "incorrect_questions" in response.get_json()["error"]
+
+    def test_library_stats_endpoint_returns_stats(self, monkeypatch):
+        monkeypatch.setattr(recommendation_api, "get_video_count", lambda: {"videos": 4, "chunks": 120})
+
+        app = _create_app(recommendation_routes)
+        response = app.test_client().get("/api/recommendations/library/stats")
+
+        assert response.status_code == 200
+        assert response.get_json() == {"videos": 4, "chunks": 120}
+
+    def test_build_quiz_clustering_text_uses_questions_and_correct_answers(self):
+        clustering_text = build_quiz_clustering_text({
+            "title": "Python basics",
+            "questions": [
+                {
+                    "question_text": "What keyword starts a loop?",
+                    "answers": [
+                        {"answer_text": "for", "is_correct": True},
+                        {"answer_text": "class", "is_correct": False},
+                    ],
+                }
+            ],
+        })
+
+        assert "Title: Python basics" in clustering_text
+        assert "Question: What keyword starts a loop?" in clustering_text
+        assert "Correct answer: for" in clustering_text
+        assert "class" not in clustering_text
+
+    def test_clusterize_endpoint_returns_cluster_names(self, monkeypatch):
+        recommendation_api._cluster_cache.clear()
+        monkeypatch.setattr(recommendation_api, "get_current_user_db_id", lambda: "user-1")
+        captured_payload = {}
+
+        def fake_cluster_quiz_titles(items):
+            captured_payload["items"] = items
+            return [0, 1, 1]
+
+        monkeypatch.setattr("core.embeddings.cluster_quiz_titles", fake_cluster_quiz_titles)
+
+        captured_prompts = []
+
+        class FakeLLM:
+            def invoke(self, prompt):
+                captured_prompts.append(prompt)
+                if "SQL basics" in prompt:
+                    return SimpleNamespace(content="Databases")
+                return SimpleNamespace(content="Programming")
+
+        monkeypatch.setattr("core.llm.get_llm_client", lambda: FakeLLM())
+
+        app = _create_app(recommendation_routes)
+        response = app.test_client().post(
+            "/api/cluster-quizzes/clusterize",
+            json={
+                "quizzes": [
+                    {
+                        "title": "Python loops",
+                        "questions": [
+                            {
+                                "question_text": "What keyword starts a loop?",
+                                "answers": [{"answer_text": "for", "is_correct": True}],
+                            }
+                        ],
+                    },
+                    {
+                        "title": "SQL joins",
+                        "questions": [
+                            {
+                                "question_text": "Which join returns matching rows?",
+                                "answers": [{"answer_text": "INNER JOIN", "is_correct": True}],
+                            }
+                        ],
+                    },
+                    {
+                        "title": "SQL basics",
+                        "questions": [
+                            {
+                                "question_text": "How do you read all rows?",
+                                "answers": [{"answer_text": "SELECT *", "is_correct": True}],
+                            }
+                        ],
+                    },
+                ]
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["status"] == "ready"
+        assert payload["clusters"] == [0, 1, 1]
+        assert payload["count"] == 2
+        assert payload["names"] == {"0": "Programming", "1": "Databases"}
+        assert len(captured_prompts) == 2
+        assert "Question: What keyword starts a loop?" in captured_payload["items"][0]
+        assert "Correct answer: for" in captured_payload["items"][0]
+
+    def test_cluster_extract_returns_missing_without_cache(self, monkeypatch):
+        recommendation_api._cluster_cache.clear()
+        monkeypatch.setattr(recommendation_api, "get_current_user_db_id", lambda: "user-2")
+
+        app = _create_app(recommendation_routes)
+        response = app.test_client().post(
+            "/api/cluster-quizzes/extract",
+            json={
+                "quizzes": [
+                    {"title": "Quiz A", "questions": []},
+                    {"title": "Quiz B", "questions": []},
+                ]
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {"status": "missing"}
+
+    def test_chat_endpoint_returns_reply(self, monkeypatch):
+        captured_prompt = {}
+
+        class FakeLLM:
+            def invoke(self, prompt):
+                captured_prompt["value"] = prompt
+                return SimpleNamespace(content="Helpful hint")
+
+        monkeypatch.setattr(chat_api, "get_llm_client", lambda: FakeLLM())
+
+        app = _create_app(chat_routes)
+        response = app.test_client().post(
+            "/api/chat",
+            json={
+                "message": "Give me a hint",
+                "context": {
+                    "quizTitle": "Algorithms",
+                    "questionText": "What is binary search?",
+                    "options": ["O(n)", "O(log n)"],
+                    "isReviewMode": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {"reply": "Helpful hint"}
+        assert "DO NOT REVEAL THE CORRECT ANSWER" in captured_prompt["value"]
+
+    def test_chat_endpoint_requires_message(self, monkeypatch):
+        monkeypatch.setattr(chat_api, "get_llm_client", lambda: SimpleNamespace(invoke=lambda _: None))
+
+        app = _create_app(chat_routes)
+        response = app.test_client().post("/api/chat", json={"context": {}})
+
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "Missing 'message'"
 
     @requires_external_apis
     def test_huggingface_embedding_connection(self):
