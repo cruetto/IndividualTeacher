@@ -1,4 +1,5 @@
-import traceback
+import json
+import logging
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
@@ -16,6 +17,11 @@ MAX_RECOMMENDATIONS = 3
 
 
 recommendation_routes = Blueprint('recommendations', __name__)
+logger = logging.getLogger(__name__)
+
+
+def _log_final_json(marker, payload):
+    logger.info("%s %s", marker, json.dumps(payload, ensure_ascii=False, default=str))
 
 
 @recommendation_routes.route('/api/recommendations', methods=['POST'])
@@ -70,13 +76,20 @@ def get_recommendations():
                 'question_text': question.get('question_text', ''),
                 'recommendations': formatted_recommendations
             }
-            
+
+        _log_final_json("FINAL_RECOMMENDATIONS_JSON", {
+            "incorrect_question_count": len(incorrect_questions),
+            "threshold": RECOMMENDATION_THRESHOLD,
+            "max_recommendations": MAX_RECOMMENDATIONS,
+            "input": incorrect_questions,
+            "result": all_recommendations,
+        })
+
         
         return jsonify(all_recommendations)
     
     except Exception as e:
-        print(f"Error getting recommendations: {e}")
-        traceback.print_exc()
+        logger.exception("Error getting recommendations")
         return jsonify({"error": "Failed to get recommendations"}), 500
 
 
@@ -105,8 +118,7 @@ def add_video_to_library():
         })
     
     except Exception as e:
-        print(f"Error adding video: {e}")
-        traceback.print_exc()
+        logger.exception("Error adding video")
         return jsonify({"error": "Failed to add video"}), 500
 
 
@@ -158,11 +170,7 @@ def cluster_quizzes_full():
         
         user_id = get_current_user_db_id() or "guest"
         
-        print(f"[CLUSTER FULL] Request received for user: {user_id}")
-        print(f"[CLUSTER FULL] Received {len(titles)} quiz titles to cluster")
-        
         if len(titles) < 2:
-            print(f"[CLUSTER FULL] Not enough quizzes to cluster")
             result = {
                 "clusters": [0] * len(titles),
                 "count": 1,
@@ -170,6 +178,12 @@ def cluster_quizzes_full():
                 "hash": get_list_hash(clustering_texts)
             }
             _cluster_cache[user_id] = result
+            _log_final_json("FINAL_CLUSTER_RESULT_JSON", {
+                "user_id": user_id,
+                "title_count": len(titles),
+                "titles": titles,
+                "result": result,
+            })
             return jsonify(result)
         
         from core.embeddings import cluster_quiz_titles
@@ -177,9 +191,7 @@ def cluster_quizzes_full():
         
         # Generate fresh clusters just for this exact list
         clusters = cluster_quiz_titles(clustering_texts)
-        
-        print(f"[CLUSTER FULL] Generated clusters: {clusters}")
-        
+
         cluster_count = len(set(clusters))
         cluster_names = {}
         
@@ -202,9 +214,7 @@ def cluster_quizzes_full():
                             name = ' '.join(name_words[:3])
                         cluster_names[cluster_id] = name
                 except Exception as e:
-                    print(f"[CLUSTER FULL] Error naming cluster {cluster_id}: {e}")
-        
-        print(f"[CLUSTER FULL] cluster names: {cluster_names}")
+                    logger.warning("Error naming cluster %s: %s", cluster_id, e)
         
         result = {
             "status": "ready",
@@ -216,12 +226,17 @@ def cluster_quizzes_full():
         
         # Cache this result permanently for this user
         _cluster_cache[user_id] = result
+        _log_final_json("FINAL_CLUSTER_RESULT_JSON", {
+            "user_id": user_id,
+            "title_count": len(titles),
+            "titles": titles,
+            "result": result,
+        })
         
         return jsonify(result)
     
     except Exception as e:
-        print(f"Error getting clusters: {e}")
-        traceback.print_exc()
+        logger.exception("Error getting clusters")
         return jsonify({"error": "Failed to get clusters"}), 500
 
 
@@ -242,12 +257,15 @@ def cluster_quizzes_extract():
         current_hash = get_list_hash(clustering_texts)
         
         if user_id in _cluster_cache and _cluster_cache[user_id]['hash'] == current_hash:
-            print(f"[CLUSTER EXTRACT] Returning cached result for user {user_id}")
-            return jsonify(_cluster_cache[user_id])
+            result = _cluster_cache[user_id]
+            _log_final_json("FINAL_CLUSTER_CACHE_JSON", {
+                "user_id": user_id,
+                "result": result,
+            })
+            return jsonify(result)
         else:
             return jsonify({"status": "missing"})
             
     except Exception as e:
-        print(f"Error extracting clusters: {e}")
-        traceback.print_exc()
+        logger.exception("Error extracting clusters")
         return jsonify({"error": "Failed to get clusters"}), 500

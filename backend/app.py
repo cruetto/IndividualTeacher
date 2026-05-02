@@ -13,13 +13,24 @@ from api.recommendations import recommendation_routes
 
 clustering_started = False
 clustering_lock = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
-for noisy_logger in ("groq", "httpx", "httpcore"):
+for noisy_logger in (
+    "groq",
+    "httpx",
+    "httpcore",
+    "urllib3",
+    "werkzeug",
+    "pymongo",
+    "sentence_transformers",
+    "transformers",
+    "huggingface_hub",
+):
     logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 
@@ -36,7 +47,7 @@ def trigger_clustering_lazy():
             from core.embeddings import run_full_clustering
             run_full_clustering()
         except Exception as e:
-            print(f"Clustering failed: {e}")
+            logger.exception("Background clustering failed")
     
     thread = threading.Thread(target=run_clustering_background, daemon=True)
     thread.start()

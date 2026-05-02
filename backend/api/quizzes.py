@@ -292,12 +292,6 @@ def _parse_generation_request():
 def _queue_event(progress_queue, payload):
     if payload.get("error"):
         logger.error("Quiz generation stream error: %s", payload["error"])
-    elif payload.get("status"):
-        logger.info(
-            "Quiz generation progress: %s%% - %s",
-            payload.get("progress", "?"),
-            payload["status"],
-        )
 
     progress_queue.put(json.dumps(payload, ensure_ascii=False))
 
@@ -416,6 +410,25 @@ def _save_quiz_for_user(quiz_document_data, user_db_id):
     )
 
 
+def _log_generated_quiz_result(generation_request, quiz_document_data, user_db_id):
+    final_result = {
+        "request_id": generation_request["request_id"],
+        "source_type": generation_request["source_type"],
+        "source_document": generation_request["source_document"],
+        "title": generation_request["title"],
+        "topic": generation_request["topic"],
+        "num_questions": generation_request["num_questions"],
+        "difficulty": generation_request["difficulty"],
+        "language": generation_request["language"],
+        "saved_for_authenticated_user": bool(user_db_id),
+        "quiz": quiz_document_data,
+    }
+    logger.info(
+        "FINAL_GENERATED_QUIZ_JSON %s",
+        json.dumps(final_result, ensure_ascii=False, default=str),
+    )
+
+
 
 
 @quiz_routes.route('/api/quizzes/generate-stream', methods=['POST'])
@@ -447,6 +460,7 @@ def generate_quiz_stream():
             questions = _generate_questions_for_request(generation_request, progress_queue)
             quiz_document_data = _build_quiz_document(generation_request, questions, user_db_id)
             _save_quiz_for_user(quiz_document_data, user_db_id)
+            _log_generated_quiz_result(generation_request, quiz_document_data, user_db_id)
 
             _queue_event(progress_queue, {
                 "progress": 100,
