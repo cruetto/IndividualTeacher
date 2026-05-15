@@ -125,6 +125,54 @@ docker compose logs --tail=100 web
 docker compose up -d --build
 ```
 
+## Docker Command Reference
+
+Run app commands from:
+
+```bash
+cd /opt/northstar/apps/quizzy
+```
+
+Show running containers:
+
+```bash
+docker compose ps
+docker ps
+```
+
+Start or update the full app:
+
+```bash
+docker compose up -d --build
+```
+
+Stop the app without deleting images or env files:
+
+```bash
+docker compose down
+```
+
+Restart one service:
+
+```bash
+docker compose restart backend
+docker compose restart frontend
+docker compose restart web
+```
+
+Rebuild only one image:
+
+```bash
+docker compose build backend
+docker compose up -d backend
+```
+
+Check disk usage:
+
+```bash
+docker system df
+```
+
 ## Environment Files
 
 Do not commit real `.env` files.
