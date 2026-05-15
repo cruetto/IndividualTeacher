@@ -28,6 +28,7 @@ frontend/*.sw?
 frontend/.env
 
 # Root-level environment file
+.env
 backend/.env
 
 # Backend (Python)
