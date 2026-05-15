@@ -11,11 +11,9 @@ RUN apt-get update \
       curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY . .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
-
-COPY . .
 
 EXPOSE 5000
 
