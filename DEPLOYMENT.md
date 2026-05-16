@@ -27,7 +27,7 @@ The app runs on the Oracle VM in:
 The shared reverse proxy runs in:
 
 ```text
-/opt/northstar/proxy
+/opt/northstar/infra/proxy
 ```
 
 ## DNS
@@ -40,7 +40,7 @@ Cloudflare has an `A` record:
 quizzy.attentionisallineed.xyz -> 130.61.33.233
 ```
 
-For Caddy-managed Let's Encrypt certificates, keep this record as `DNS only` unless the proxy setup is intentionally changed.
+The record can be Cloudflare proxied. Caddy still terminates HTTPS on the VM, and Cloudflare sits in front of it.
 
 ## Oracle VM
 
@@ -63,33 +63,42 @@ Caddy is the public HTTPS entrypoint.
 Location:
 
 ```text
-/opt/northstar/proxy
+/opt/northstar/infra/proxy
 ```
 
-Expected `Caddyfile`:
+The real VM `Caddyfile` is intentionally not committed to git. It lives at:
+
+```text
+/opt/northstar/infra/proxy/Caddyfile
+```
+
+The infra repo keeps only a safe template:
+
+```text
+/opt/northstar/infra/proxy/Caddyfile.example
+```
+
+Expected Quizzy route:
 
 ```caddy
 quizzy.attentionisallineed.xyz {
-    reverse_proxy host.docker.internal:8080
+    reverse_proxy quizzy-web-1:80
 }
 ```
 
-The Caddy Docker Compose file must include:
+Quizzy, CV, Portainer, File Browser, and Caddy share the external Docker network:
 
-```yaml
-extra_hosts:
-  - "host.docker.internal:host-gateway"
+```text
+northstar_web
 ```
-
-This is needed because `localhost` inside the Caddy container means the Caddy container itself, not the VM host.
 
 Useful commands:
 
 ```bash
-cd /opt/northstar/proxy
+cd /opt/northstar/infra/proxy
 docker compose ps
-docker compose restart
-docker logs northstar-caddy --tail=50
+docker compose logs --tail=80 caddy
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
 ## App Containers
@@ -276,9 +285,9 @@ docker compose logs --tail=80 backend
 If only Caddy changed:
 
 ```bash
-cd /opt/northstar/proxy
-docker compose restart
-docker logs northstar-caddy --tail=50
+cd /opt/northstar/infra/proxy
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+docker compose logs --tail=50 caddy
 ```
 
 ## Health Checks
