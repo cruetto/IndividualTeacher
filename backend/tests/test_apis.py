@@ -13,6 +13,7 @@ from flask import Flask
 import api.quizzes as quiz_api
 import api.recommendations as recommendation_api
 import api.chat as chat_api
+import core.quiz_generation as quiz_generation
 from api.quizzes import quiz_routes
 from api.recommendations import recommendation_routes
 from api.chat import chat_routes
@@ -20,6 +21,7 @@ from core.pdf_processor import PDFProcessor
 from core.quiz_generation import (
     create_distractor_generation_prompt,
     create_question_plan_prompt,
+    generate_questions_from_plans,
     normalize_generated_questions,
     normalize_question_plans,
     parse_llm_json,
@@ -146,11 +148,42 @@ class TestExternalAPIs:
         assert "exactly 3 incorrect distractors" in prompt
         assert "expert-level" in prompt
         assert '"questions"' in prompt
+        assert "valid JSON accepted by json.loads" in prompt
+        assert "Do not wrap the response in Markdown" in prompt
 
     def test_parse_llm_json_handles_fenced_json(self):
         parsed = parse_llm_json('```json\n{"question_plans": []}\n```')
 
         assert parsed == {"question_plans": []}
+
+    def test_parse_llm_json_handles_json_like_model_output(self):
+        parsed = parse_llm_json("""
+        Here is the quiz:
+        ```json
+        {
+          'questions': [
+            {
+              'question_text': 'What is 2 + 2?',
+              'answers': [
+                {'answer_text': '4', 'is_correct': True},
+                {'answer_text': '3', 'is_correct': False},
+              ],
+            }
+          ],
+        }
+        ```
+        """)
+
+        assert parsed["questions"][0]["answers"][0]["is_correct"] is True
+
+    def test_parse_llm_json_uses_first_valid_json_object(self):
+        parsed = parse_llm_json("""
+        {"questions": []}
+        Note: I used the requested format.
+        {"ignored": true}
+        """)
+
+        assert parsed == {"questions": []}
 
     def test_parse_llm_json_rejects_malformed_json(self):
         with pytest.raises(ValueError):
@@ -194,6 +227,217 @@ class TestExternalAPIs:
         assert len(questions[0]["answers"]) == 4
         assert sum(answer["is_correct"] for answer in questions[0]["answers"]) == 1
         assert all(answer["id"] for answer in questions[0]["answers"])
+
+    def test_normalize_generated_questions_accepts_options_and_correct_answer(self):
+        questions = normalize_generated_questions({
+            "questions": [{
+                "prompt": "What is 2 + 2?",
+                "options": ["3", "4", "5", "6"],
+                "correctAnswer": "4",
+            }]
+        })
+
+        assert len(questions) == 1
+        assert questions[0]["question_text"] == "What is 2 + 2?"
+        assert sum(answer["is_correct"] for answer in questions[0]["answers"]) == 1
+        assert questions[0]["answers"][0]["answer_text"] == "4"
+
+    def test_normalize_generated_questions_accepts_choice_labels(self):
+        questions = normalize_generated_questions({
+            "quiz": {
+                "questions": [{
+                    "stem": "What is the capital of Lithuania?",
+                    "choices": {
+                        "A": "Riga",
+                        "B": "Vilnius",
+                        "C": "Tallinn",
+                        "D": "Warsaw",
+                    },
+                    "correct_option": "B",
+                }]
+            }
+        })
+
+        assert len(questions) == 1
+        assert questions[0]["answers"][0]["answer_text"] == "Vilnius"
+        assert sum(answer["is_correct"] for answer in questions[0]["answers"]) == 1
+
+    def test_normalize_generated_questions_treats_false_string_as_false(self):
+        questions = normalize_generated_questions({
+            "questions": [{
+                "question_text": "What is 2 + 2?",
+                "answers": [
+                    {"answer_text": "4", "is_correct": "true"},
+                    {"answer_text": "3", "is_correct": "false"},
+                    {"answer_text": "5", "is_correct": "false"},
+                    {"answer_text": "6", "is_correct": "false"},
+                ]
+            }]
+        })
+
+        assert sum(answer["is_correct"] for answer in questions[0]["answers"]) == 1
+        assert questions[0]["answers"][0]["answer_text"] == "4"
+
+    def test_generate_questions_from_plans_retries_invalid_json(self, monkeypatch):
+        class FakeLLM:
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, prompt):
+                self.calls += 1
+                if self.calls == 1:
+                    return SimpleNamespace(content="I cannot provide JSON for that.")
+                return SimpleNamespace(content=json.dumps({
+                    "questions": [{
+                        "question_text": "What is 2 + 2?",
+                        "answers": [
+                            {"answer_text": "4", "is_correct": True},
+                            {"answer_text": "3", "is_correct": False},
+                            {"answer_text": "5", "is_correct": False},
+                            {"answer_text": "6", "is_correct": False},
+                        ],
+                    }]
+                }))
+
+        fake_llm = FakeLLM()
+        monkeypatch.setattr("core.quiz_generation.get_llm_client", lambda **_: fake_llm)
+
+        questions = generate_questions_from_plans(
+            [{
+                "question_text": "What is 2 + 2?",
+                "correct_answer": "4",
+                "source_reference": "Page 1",
+                "concept": "Addition",
+                "origin": "existing_task",
+            }],
+            difficulty=3,
+            language="English",
+        )
+
+        assert fake_llm.calls == 2
+        assert questions[0]["question_text"] == "What is 2 + 2?"
+
+    def test_generate_questions_from_plans_retries_unusable_json(self, monkeypatch):
+        class FakeLLM:
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, prompt):
+                self.calls += 1
+                if self.calls == 1:
+                    return SimpleNamespace(content=json.dumps({"questions": [{"question_text": "No answers"}]}))
+                return SimpleNamespace(content=json.dumps({
+                    "questions": [{
+                        "question_text": "What is 2 + 2?",
+                        "options": ["3", "4", "5", "6"],
+                        "correctAnswer": "4",
+                    }]
+                }))
+
+        fake_llm = FakeLLM()
+        monkeypatch.setattr("core.quiz_generation.get_llm_client", lambda **_: fake_llm)
+
+        questions = generate_questions_from_plans(
+            [{
+                "question_text": "What is 2 + 2?",
+                "correct_answer": "4",
+                "source_reference": "Page 1",
+                "concept": "Addition",
+                "origin": "existing_task",
+            }],
+            difficulty=3,
+            language="English",
+        )
+
+        assert fake_llm.calls == 2
+        assert questions[0]["answers"][0]["answer_text"] == "4"
+
+    def test_generate_questions_from_plans_batches_large_requests(self, monkeypatch):
+        class FakeLLM:
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, prompt):
+                self.calls += 1
+                batch_size = 5 if self.calls in {1, 2} else 2
+                return SimpleNamespace(content=json.dumps({
+                    "questions": [
+                        {
+                            "question_text": f"Question {self.calls}-{index}",
+                            "answers": [
+                                {"answer_text": "Correct", "is_correct": True},
+                                {"answer_text": "Wrong 1", "is_correct": False},
+                                {"answer_text": "Wrong 2", "is_correct": False},
+                                {"answer_text": "Wrong 3", "is_correct": False},
+                            ],
+                        }
+                        for index in range(batch_size)
+                    ]
+                }))
+
+        fake_llm = FakeLLM()
+        monkeypatch.setattr("core.quiz_generation.get_llm_client", lambda **_: fake_llm)
+
+        plans = [
+            {
+                "question_text": f"Question plan {index}",
+                "correct_answer": "Correct",
+                "source_reference": "Topic",
+                "concept": "Batching",
+                "origin": "topic_generation",
+            }
+            for index in range(12)
+        ]
+
+        questions = generate_questions_from_plans(plans, difficulty=3, language="English")
+
+        assert fake_llm.calls == 3
+        assert len(questions) == 12
+
+    def test_generate_questions_from_plans_retries_repeated_rate_limits(self, monkeypatch):
+        class RateLimitError(Exception):
+            pass
+
+        class FakeLLM:
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, prompt):
+                self.calls += 1
+                if self.calls < 3:
+                    raise RateLimitError("Rate limit reached. Please try again in 0.01s.")
+                return SimpleNamespace(content=json.dumps({
+                    "questions": [{
+                        "question_text": "What is 2 + 2?",
+                        "answers": [
+                            {"answer_text": "4", "is_correct": True},
+                            {"answer_text": "3", "is_correct": False},
+                            {"answer_text": "5", "is_correct": False},
+                            {"answer_text": "6", "is_correct": False},
+                        ],
+                    }]
+                }))
+
+        fake_llm = FakeLLM()
+        sleeps = []
+        monkeypatch.setattr("core.quiz_generation.get_llm_client", lambda **_: fake_llm)
+        monkeypatch.setattr(quiz_generation.time, "sleep", sleeps.append)
+
+        questions = generate_questions_from_plans(
+            [{
+                "question_text": "What is 2 + 2?",
+                "correct_answer": "4",
+                "source_reference": "Topic",
+                "concept": "Addition",
+                "origin": "topic_generation",
+            }],
+            difficulty=3,
+            language="English",
+        )
+
+        assert fake_llm.calls == 3
+        assert len(sleeps) == 2
+        assert questions[0]["question_text"] == "What is 2 + 2?"
 
     def test_generate_stream_accepts_topic_form_data(self, monkeypatch):
         captured_request = {}
