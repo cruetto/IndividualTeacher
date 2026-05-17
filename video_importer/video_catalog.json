@@ -1,94 +1,112 @@
 [
-  {
-    "video_id": "rfscVS0vtbw",
-    "title": "Learn Python - Full Course for Beginners [Tutorial]"
-  },
-  {
-    "video_id": "HXV3zeQKqGY",
-    "title": "SQL Tutorial - Full Database Course for Beginners"
-  },
-  {
-    "video_id": "aircAruvnKk",
-    "title": "But what is a neural network? | Deep learning chapter 1"
-  },
-  {
-    "video_id": "s1Ly3cX4yHc",
-    "title": "Multiplication of Large Numbers"
-  },
-  {
-    "video_id": "3tisOnOkwzo",
-    "title": "BIOLOGY explained in 17 Minutes"
-  },
-  {
-    "video_id": "KXJSjte_OAI",
-    "title": ""
-  },
-  {
-    "video_id": "vA5TTz6BXhY",
-    "title": ""
-  },
-  {
-    "video_id": "XMUe3zFhM5c",
-    "title": ""
-  },
-  {
-    "video_id": "qqp6QN20CpE",
-    "title": ""
-  },
-  {
-    "video_id": "Qb9s3UiMSTA",
-    "title": ""
-  },
-  {
-    "video_id": "J2fol8eWo64",
-    "title": ""
-  },
-  {
-    "video_id": "e9lnsKot_SQ",
-    "title": ""
-  },
-  {
-    "video_id": "K5KVEU3aaeQ",
-    "title": ""
-  },
-  {
-    "video_id": "xrtn9j-fJdk",
-    "title": ""
-  },
-  {
-    "video_id": "fLvJ8VdHLA0",
-    "title": ""
-  },
-  {
-    "video_id": "IHZwWFHWa-w",
-    "title": ""
-  },
-  {
-    "video_id": "Ilg3gGewQ5U",
-    "title": ""
-  },
-  {
-    "video_id": "tIeHLnjs5U8",
-    "title": ""
-  },
-  {
-    "video_id": "LPZh9BOjkQs",
-    "title": ""
-  },
-  {
-    "video_id": "wjZofJX0v4M",
-    "title": ""
-  },
-  {
-    "video_id": "eMlx5fFNoYc",
-    "title": ""
-  },
-  {
-    "video_id": "9-Jl0dxWQs8",
-    "title": ""
-  },
-  {
-    "video_id": "iv-5mZ_9CPY",
-    "title": ""
-  }
+  { "video_id": "VEQaH4LruUo", "title": "What is a calorie? - Emma Bryce" },
+  { "video_id": "5MuIMqhT8DM", "title": "Sleep Is Your Superpower | Matt Walker | TED" },
+  { "video_id": "G4H1N_yXBiA", "title": "Causes and Effects of Climate Change | National Geographic" },
+  { "video_id": "PHe0bXAIuk0", "title": "How The Economic Machine Works by Ray Dalio" },
+  { "video_id": "Yocja_N5s1I", "title": "The Agricultural Revolution: Crash Course World History #1" },
+  { "video_id": "uBGl2BujkPQ", "title": "Introduction to Anatomy & Physiology: Crash Course A&P #1" },
+  { "video_id": "ZM8ECpBuQYE", "title": "Motion in a Straight Line: Crash Course Physics #1" },
+  { "video_id": "vo4pMVb0R6M", "title": "Intro to Psychology: Crash Course Psychology #1" },
+  { "video_id": "LxgMdjyw8uw", "title": "We WILL Fix Climate Change!" },
+  { "video_id": "yiw6_JakZFc", "title": "Can YOU Fix Climate Change?" },
+
+  { "video_id": "pQN-pnXPaVg", "title": "HTML Full Course - Build a Website Tutorial" },
+  { "video_id": "PkZNo7MFNFg", "title": "Learn JavaScript - Full Course for Beginners" },
+  { "video_id": "bMknfKXIFA8", "title": "React Course - Beginner's Tutorial" },
+  { "video_id": "RGOj5yH7evk", "title": "Git and GitHub for Beginners" },
+  { "video_id": "fqMOX6JJhGo", "title": "Docker Tutorial for Beginners" },
+  { "video_id": "KJgsSFOSQv0", "title": "C Programming Tutorial for Beginners" },
+  { "video_id": "vLnPwxZdW4Y", "title": "C++ Tutorial for Beginners" },
+  { "video_id": "grEKMHGYyns", "title": "Java Tutorial for Beginners" },
+  { "video_id": "RBSGKlAvoiM", "title": "Data Structures Easy to Advanced Course" },
+  { "video_id": "8DvywoWv6fI", "title": "Python for Everybody - Full University Course" },
+
+  { "video_id": "LHBE6Q9XlzI", "title": "Python for Data Science - Full Course" },
+  { "video_id": "r-uOLxNrNk8", "title": "Data Analysis with Python" },
+  { "video_id": "i_LwzRVP7bg", "title": "Machine Learning for Everybody" },
+  { "video_id": "zOjov-2OZ0E", "title": "Introduction to Programming and Computer Science" },
+  { "video_id": "GZvSYJDk-us", "title": "APIs for Beginners" },
+
+  { "video_id": "TPdKpeijj8s", "title": "Early Computing: Crash Course Computer Science #1" },
+  { "video_id": "QnQe0xW_JY4", "title": "Biology: Crash Course Biology #1" },
+  { "video_id": "sLkGSV9WDMA", "title": "The Nucleus: Crash Course Chemistry #1" },
+  { "video_id": "Gc2en3nHxA4", "title": "Introduction to Astronomy: Crash Course Astronomy #1" },
+  { "video_id": "3ez10ADR_gM", "title": "Intro to Economics: Crash Course Econ #1" },
+
+  { "video_id": "lrk4oY7UxpQ", "title": "Introduction: Crash Course U.S. Government and Politics #1" },
+  { "video_id": "1A_CAkYt3GY", "title": "What is Philosophy?: Crash Course Philosophy #1" },
+  { "video_id": "WUvTyaaNkzM", "title": "Essence of Calculus, Chapter 1" },
+  { "video_id": "fNk_zzaMoSs", "title": "Vectors, what even are they?" },
+  { "video_id": "kjBOesZCoqc", "title": "Matrix multiplication as composition" },
+
+  { "video_id": "kYB8IZa5AuE", "title": "Inverse matrices, column space and null space" },
+  { "video_id": "arj7oStGLkU", "title": "Inside the mind of a master procrastinator" },
+  { "video_id": "Ks-_Mh1QhMc", "title": "Your body language may shape who you are" },
+  { "video_id": "H14bBuluwB8", "title": "Grit: the power of passion and perseverance" },
+  { "video_id": "5MgBikgcWnY", "title": "The first 20 hours -- how to learn anything" },
+
+  { "video_id": "eIho2S0ZahI", "title": "How to speak so that people want to listen" },
+  { "video_id": "qp0HIF3SfI4", "title": "How great leaders inspire action" },
+  { "video_id": "z-IR48Mb3W0", "title": "What is depression? - Helen M. Farrell" },
+  { "video_id": "PSRJfaAYkW4", "title": "How does your immune system work?" },
+  { "video_id": "lEXBxijQREo", "title": "How sugar affects the brain" },
+  { "video_id": "yXYFNm6F7I8", "title": "How playing an instrument benefits your brain" },
+  { "video_id": "ciNHn38EyRc", "title": "SQL Injection - Computerphile" },
+  { "video_id": "J4Wdy0Wc_xQ", "title": "Random Forests, Clearly Explained" },
+  { "video_id": "7VeUPuFGJHk", "title": "Decision Trees, Clearly Explained" },
+  { "video_id": "rStL7niR7gs", "title": "The Rules for Rulers" },
+   { "video_id": "G3e-cpL7ofc", "title": "HTML & CSS Full Course - Beginner to Pro" },
+  { "video_id": "SccSCuHhOw0", "title": "JavaScript Full Course" },
+  { "video_id": "zJSY8tbf_ys", "title": "Frontend Web Development Bootcamp Course" },
+  { "video_id": "nu_pCVPKzTk", "title": "Node.js and Express.js Full Course" },
+  { "video_id": "pKd0Rpw7O48", "title": "MongoDB and Mongoose Full Course" },
+  { "video_id": "jS4aFq5-91M", "title": "JavaScript Programming Full Course" },
+  { "video_id": "GhQdlIFylQ8", "title": "C# Tutorial - Full Course for Beginners" },
+  { "video_id": "tPYj3fFJGjk", "title": "Kotlin Course - Tutorial for Beginners" },
+  { "video_id": "gyMwXuJrbJQ", "title": "Solidity, Blockchain, and Smart Contract Course" },
+  { "video_id": "OXGznpKZ_sA", "title": "CSS Tutorial - Full Course for Beginners" },
+
+  { "video_id": "3c-iBn73dDE", "title": "Docker Tutorial for Beginners" },
+  { "video_id": "X48VuDVv0do", "title": "Kubernetes Tutorial for Beginners" },
+  { "video_id": "V_xro1bcAuA", "title": "PyTorch for Deep Learning & Machine Learning" },
+  { "video_id": "7eh4d6sabA0", "title": "TensorFlow 2.0 Complete Course" },
+  { "video_id": "FgakZw6K1QQ", "title": "Principal Component Analysis (PCA), Step-by-Step" },
+  { "video_id": "fSytzGwwBVw", "title": "Support Vector Machines, Clearly Explained" },
+  { "video_id": "yIYKR4sgzI8", "title": "Logistic Regression, Clearly Explained" },
+  { "video_id": "EuBBz3bI-aA", "title": "ROC and AUC, Clearly Explained" },
+  { "video_id": "4b5d3muPQmA", "title": "K-means Clustering, Clearly Explained" },
+  { "video_id": "LsK-xG1cLYA", "title": "Gradient Boost, Clearly Explained" },
+
+  { "video_id": "spUNpyF58BY", "title": "But what is a Fourier series?" },
+  { "video_id": "r6sGWTCMz2k", "title": "But what is the Fourier Transform?" },
+  { "video_id": "pQa_tWZmlGs", "title": "Linear Combinations, Span, and Basis Vectors" },
+  { "video_id": "k7RM-ot2NWY", "title": "Linear Transformations and Matrices" },
+  { "video_id": "PFDu9oVAE-g", "title": "The Determinant" },
+  { "video_id": "LyGKycYT2v0", "title": "Dot Products and Duality" },
+  { "video_id": "TgKwz5Ikpc8", "title": "Three-Dimensional Linear Transformations" },
+  { "video_id": "rHLEWRxRGiM", "title": "Nonsquare Matrices as Transformations" },
+  { "video_id": "h9wxtqoa1jY", "title": "Eigenvectors and Eigenvalues" },
+  { "video_id": "zwAD6dRSVyI", "title": "Change of Basis" },
+
+  { "video_id": "iCvmsMzlF7o", "title": "The Power of Vulnerability" },
+  { "video_id": "iG9CE55wbtY", "title": "Do Schools Kill Creativity?" },
+  { "video_id": "D9Ihs241zeg", "title": "The Danger of a Single Story" },
+  { "video_id": "RcGyVTAoXEU", "title": "How to Make Stress Your Friend" },
+  { "video_id": "rrkrvAUbU9Y", "title": "The Puzzle of Motivation" },
+  { "video_id": "86x-u-tz0MA", "title": "Your Elusive Creative Genius" },
+  { "video_id": "fLJsdqxnZb0", "title": "The Happy Secret to Better Work" },
+  { "video_id": "UyyjU8fzEYU", "title": "The Psychology of Your Future Self" },
+  { "video_id": "8KkKuTCFvzI", "title": "The Art of Stillness" },
+  { "video_id": "36m1o-tM05g", "title": "What Makes a Good Life?" },
+
+  { "video_id": "h6fcK_fRYaI", "title": "What Is Life? Is Death Real?" },
+  { "video_id": "dGiQaabX3_o", "title": "Is Meat Bad for You?" },
+  { "video_id": "GoJsr4IwCm4", "title": "The Most Efficient Way to Destroy the Universe" },
+  { "video_id": "sNhhvQGsMEc", "title": "The Fermi Paradox" },
+  { "video_id": "yS1ibDImAYU", "title": "What Happens If You Detonate a Nuclear Bomb?" },
+  { "video_id": "OmJ-4B-mS-Y", "title": "The Map of Mathematics" },
+  { "video_id": "P3RXtoYCW4M", "title": "The Map of Physics" },
+  { "video_id": "SzJ46YA_RaA", "title": "The Map of Computer Science" },
+  { "video_id": "PmvLB5dIEp8", "title": "The Map of Chemistry" },
+  { "video_id": "vzS_0B64JBc", "title": "The Map of Biology" }
 ]

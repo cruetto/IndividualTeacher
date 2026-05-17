@@ -104,9 +104,7 @@ def main():
         else:
             failed += 1
         
-        # Rate limiting
-        if idx < len(videos):
-            time.sleep(1.5)
+        time.sleep(10)
     
     total_count = collection.count_documents({})
     
