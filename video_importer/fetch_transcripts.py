@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Step 1: Fetch and cache YouTube transcripts
-This script only downloads transcripts, no embeddings, no database access
-Run this first to collect all transcripts offline
+This script downloads transcripts into MongoDB, but does not generate embeddings
+Run this first to collect all transcripts before processing embeddings
 """
 import sys
 import os
@@ -31,15 +31,12 @@ def get_transcript_collection():
     
     return collection
 
-def transcript_exists(video_id: str) -> bool:
+def transcript_exists(collection, video_id: str) -> bool:
     """Check if transcript already exists in database"""
-    collection = get_transcript_collection()
     return collection.count_documents({"video_id": video_id}) > 0
 
-def save_transcript(transcript_data: Dict) -> None:
+def save_transcript(collection, transcript_data: Dict) -> None:
     """Save transcript to database"""
-    collection = get_transcript_collection()
-    
     collection.replace_one(
         {"video_id": transcript_data['video_id']},
         transcript_data,
@@ -89,7 +86,7 @@ def main():
         print(f"\n[{idx}/{len(videos)}] {video_id}")
         print(f"📺 {title}")
         
-        if transcript_exists(video_id):
+        if transcript_exists(collection, video_id):
             print(f"✅ Already in database, skipping")
             skipped += 1
             continue
@@ -98,13 +95,14 @@ def main():
         transcript_data = fetch_single_transcript(video_id)
         
         if transcript_data:
-            save_transcript(transcript_data)
+            save_transcript(collection, transcript_data)
             print(f"💾 Saved to database ({len(transcript_data['transcript'])} segments)")
             success += 1
         else:
             failed += 1
         
-        time.sleep(10)
+        if idx < len(videos):
+            time.sleep(10)
     
     total_count = collection.count_documents({})
     

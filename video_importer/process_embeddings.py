@@ -12,7 +12,6 @@ import sys
 import os
 import json
 import time
-import numpy as np
 from typing import List, Dict, Optional
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -56,9 +55,8 @@ def get_transcript_collection():
     db = get_db()
     return db['youtube_transcripts']
 
-def get_cached_transcript(video_id: str) -> Optional[Dict]:
+def get_cached_transcript(collection, video_id: str) -> Optional[Dict]:
     """Get transcript from database cache"""
-    collection = get_transcript_collection()
     return collection.find_one({"video_id": video_id}, {'_id': False})
 
 def chunk_transcript(transcript_segments: List[Dict]) -> List[Dict]:
@@ -122,7 +120,7 @@ def chunk_transcript(transcript_segments: List[Dict]) -> List[Dict]:
     
     return final_chunks
 
-def process_single_video(video_info: Dict) -> bool:
+def process_single_video(video_info: Dict, transcript_collection) -> str:
     """Process single cached video into database"""
     video_id = video_info['video_id']
     title = video_info['title']
@@ -132,13 +130,13 @@ def process_single_video(video_info: Dict) -> bool:
     # Skip if already in database
     if video_exists(video_id):
         print(f"⏭️  Already in database, skipping")
-        return False
+        return "skipped"
     
     # Get from database cache
-    transcript_data = get_cached_transcript(video_id)
+    transcript_data = get_cached_transcript(transcript_collection, video_id)
     if not transcript_data:
         print(f"⚠️  Not found in transcript cache, run fetch_transcripts.py first")
-        return False
+        return "failed"
     
     print(f"📝 Got {len(transcript_data['transcript'])} segments from cache")
     
@@ -168,7 +166,7 @@ def process_single_video(video_info: Dict) -> bool:
     added = add_video_embeddings(video_id, title, documents)
     print(f"✅ Successfully imported: {added} chunks stored")
     
-    return True
+    return "success"
 
 def main():
     print("=" * 70)
@@ -192,9 +190,10 @@ def main():
     for idx, video in enumerate(videos, 1):
         print(f"\n[{idx}/{len(videos)}]", end=" ")
         
-        if process_single_video(video):
+        result = process_single_video(video, collection)
+        if result == "success":
             success += 1
-        elif video_exists(video['video_id']):
+        elif result == "skipped":
             skipped += 1
         else:
             failed += 1
