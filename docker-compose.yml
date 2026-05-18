@@ -21,6 +21,8 @@ services:
 
   mongo:
     image: mongodb/mongodb-atlas-local:latest
+    container_name: quizzy-mongo-1
+    hostname: quizzy-mongo-1
     restart: unless-stopped
     volumes:
       - quizzy_mongo_data:/data/db
