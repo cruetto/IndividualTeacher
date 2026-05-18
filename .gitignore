@@ -39,6 +39,7 @@ backend/.pytest_cache/
 
 # Video Importer
 video_importer/.env
+mongo_backups/
 
 # OS files (root and everywhere)
 .DS_Store

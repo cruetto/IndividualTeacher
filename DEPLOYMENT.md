@@ -15,7 +15,7 @@ Browser
   -> Caddy reverse proxy on ports 80/443
   -> Docker Compose app proxy on localhost:8080
   -> Frontend container and backend container
-  -> MongoDB Atlas
+  -> MongoDB container on the VM
 ```
 
 The app runs on the Oracle VM in:
@@ -114,6 +114,7 @@ Services:
 ```text
 backend   Flask + Gunicorn, internal port 5000
 frontend  React build served by Nginx, internal port 80
+mongo     MongoDB Atlas Local, bound to 127.0.0.1:27017 on the VM
 web       Nginx app proxy, published as localhost:8080 on the VM
 ```
 
@@ -165,6 +166,7 @@ Restart one service:
 
 ```bash
 docker compose restart backend
+docker compose restart mongo
 docker compose restart frontend
 docker compose restart web
 ```
@@ -208,35 +210,26 @@ FLASK_SECRET_KEY='replace-with-a-long-random-secret'
 FRONTEND_ORIGIN='https://quizzy.attentionisallineed.xyz'
 GOOGLE_CLIENT_ID='your-google-client-id.apps.googleusercontent.com'
 GROQ_API_KEY='your-groq-api-key'
-MONGODB_URI='your-mongodb-atlas-uri'
+MONGODB_URI='mongodb://mongo:27017/Quizzes?directConnection=true'
 ```
 
 If the frontend shows `Network Error`, check that `VITE_API_BASE_URL` was set before rebuilding the frontend image.
 
-## MongoDB Atlas
+## MongoDB
 
-MongoDB is hosted in Atlas, not on the VM.
+MongoDB is hosted by the Quizzy Docker Compose stack on the VM. It is not exposed publicly; Compose binds it to `127.0.0.1:27017` for maintenance through SSH and the backend reaches it through the internal service name `mongo`.
 
-Recommended Atlas network access:
-
-```text
-130.61.33.233/32  northstar oracle vm
-```
-
-Remove `0.0.0.0/0` after confirming the app still works from the Oracle VM.
-
-Recommended database user:
-
-```text
-Role: readWrite
-Database: Quizzes
-```
-
-The backend code uses:
+The backend uses:
 
 ```text
 Database: Quizzes
+Collection: video_chunks
+Vector index: video_embedding_index
 ```
+
+Do not add a Cloudflare DNS record or Caddy route for MongoDB. Keep MongoDB private.
+
+Atlas may still exist as a rollback or migration source, but production should use the VM-local URI in `backend/.env`.
 
 Smoke test:
 

@@ -1,5 +1,6 @@
 from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure
+from pymongo.errors import ConnectionFailure, PyMongoError
+from pymongo.operations import SearchIndexModel
 import os
 from dotenv import load_dotenv
 
@@ -8,6 +9,36 @@ load_dotenv()
 client = None
 db = None
 video_chunks = None
+
+VIDEO_EMBEDDING_INDEX = "video_embedding_index"
+EMBEDDING_DIMENSIONS = 1024
+
+
+def ensure_video_embedding_index():
+    """Create the MongoDB Vector Search index if the deployment supports it."""
+    try:
+        for index in video_chunks.list_search_indexes():
+            if index.get("name") == VIDEO_EMBEDDING_INDEX:
+                return
+
+        search_index = SearchIndexModel(
+            name=VIDEO_EMBEDDING_INDEX,
+            type="vectorSearch",
+            definition={
+                "fields": [
+                    {
+                        "type": "vector",
+                        "path": "embedding",
+                        "numDimensions": EMBEDDING_DIMENSIONS,
+                        "similarity": "cosine",
+                    }
+                ]
+            },
+        )
+        video_chunks.create_search_index(search_index)
+        print(f"Created vector search index: {VIDEO_EMBEDDING_INDEX}")
+    except PyMongoError as e:
+        print(f"Could not ensure vector search index '{VIDEO_EMBEDDING_INDEX}': {e}")
 
 def connect_to_db():
     global client, db, video_chunks
@@ -22,20 +53,7 @@ def connect_to_db():
         
         db = client['Quizzes']
         video_chunks = db['video_chunks']
-        
-        # Create vector search index if not exists
-        try:
-            video_chunks.create_index([("embedding", "cosmosSearch")], 
-                                      name="video_embedding_index",
-                                      cosmosSearchOptions={
-                                          "kind": "vector-ivf",
-                                          "numLists": 100,
-                                          "similarity": "COS",
-                                          "dimensions": 1024
-                                      })
-        except:
-            # Index already exists
-            pass
+        ensure_video_embedding_index()
             
         print("Connected to database: 'Quizzes'")
         return db
@@ -75,7 +93,7 @@ def find_similar_videos(embedding, limit, min_score):
                 "path": "embedding",
                 "numCandidates": limit * 10,
                 "limit": limit,
-                "index": "video_embedding_index"
+                "index": VIDEO_EMBEDDING_INDEX
             }
         },
         {

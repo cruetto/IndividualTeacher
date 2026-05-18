@@ -2,6 +2,9 @@ services:
   backend:
     build:
       context: ./backend
+    depends_on:
+      mongo:
+        condition: service_healthy
     env_file:
       - ./backend/.env
     environment:
@@ -13,6 +16,15 @@ services:
     expose:
       - "5000"
     restart: unless-stopped
+
+  mongo:
+    image: mongodb/mongodb-atlas-local:latest
+    restart: unless-stopped
+    volumes:
+      - quizzy_mongo_data:/data/db
+      - quizzy_mongo_config:/data/configdb
+    ports:
+      - "127.0.0.1:27017:27017"
 
   frontend:
     build:
@@ -34,3 +46,7 @@ services:
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
+
+volumes:
+  quizzy_mongo_data:
+  quizzy_mongo_config:

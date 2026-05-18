@@ -496,27 +496,29 @@ Expected:
 
 That means real Caddyfile is ignored correctly.
 
-## MongoDB Atlas
+## MongoDB
 
-MongoDB is hosted on Atlas, not on the VM.
+Quizzy now runs MongoDB inside the app Docker Compose stack on the VM. The service is named `mongo` and is bound to `127.0.0.1:27017` only for SSH-based maintenance.
 
-Atlas project: `Quizzy`.
-
-Cluster: `Cluster0`, free tier.
-
-Current historical IP access had:
+Production backend URI:
 
 ```text
-0.0.0.0/0
+mongodb://mongo:27017/Quizzes?directConnection=true
 ```
 
-This is convenient but not secure. Recommended final rule:
+The recommendation library uses:
 
 ```text
-130.61.33.233/32
+Database: Quizzes
+Collection: video_chunks
+Vector index: video_embedding_index
+Dimensions: 1024
+Similarity: cosine
 ```
 
-Use a dedicated MongoDB database user for the VM deployment. Do not commit MongoDB URI.
+Do not create a public Cloudflare DNS record, Caddy route, or Oracle ingress rule for MongoDB. Keep MongoDB private to the VM.
+
+Atlas project `Quizzy` / cluster `Cluster0` may still exist as rollback or migration history, but it should not receive new embeddings once production is verified on the VM-local MongoDB.
 
 ## Google OAuth
 
@@ -721,7 +723,6 @@ Expected:
 - Do not commit private SSH keys.
 - Do not commit real `.env` files.
 - Do not expose Docker socket publicly.
-- Do not remove `0.0.0.0/0` from Atlas until VM-specific Atlas access is verified, but remove it once verified.
+- Do not expose MongoDB publicly through Cloudflare, Caddy, or Oracle ingress.
 - Do not delete `/opt/northstar/proxy`; archive it first.
 - Do not use File Browser for SSH key management if permissions are confusing; use terminal.
-
