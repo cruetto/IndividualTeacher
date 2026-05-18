@@ -8,9 +8,23 @@ import sys
 import os
 import json
 import time
+import random
 from typing import List, Dict, Optional
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
+from youtube_transcript_api._errors import (
+    IpBlocked,
+    NoTranscriptFound,
+    RequestBlocked,
+    TranscriptsDisabled,
+    VideoUnavailable,
+)
+
+MIN_FETCH_DELAY_SECONDS = int(os.getenv("TRANSCRIPT_MIN_DELAY_SECONDS", "40"))
+MAX_FETCH_DELAY_SECONDS = int(os.getenv("TRANSCRIPT_MAX_DELAY_SECONDS", "100"))
+
+
+class YouTubeIpBlocked(Exception):
+    """Raised when YouTube blocks the current IP."""
 
 def load_video_catalog() -> List[Dict]:
     """Load curated video list from JSON catalog"""
@@ -58,9 +72,16 @@ def fetch_single_transcript(video_id: str) -> Optional[Dict]:
     except (TranscriptsDisabled, VideoUnavailable, NoTranscriptFound) as e:
         print(f"❌ {type(e).__name__}")
         return None
+    except (IpBlocked, RequestBlocked) as e:
+        raise YouTubeIpBlocked(type(e).__name__) from e
     except Exception as e:
         print(f"❌ Failed: {type(e).__name__}: {str(e)[:100]}")
         return None
+
+def wait_before_next_request() -> None:
+    delay = random.randint(MIN_FETCH_DELAY_SECONDS, MAX_FETCH_DELAY_SECONDS)
+    print(f"⏳ Waiting {delay}s before next YouTube request")
+    time.sleep(delay)
 
 def main():
     print("=" * 70)
@@ -74,6 +95,7 @@ def main():
     
     print(f"\n📋 Found {len(videos)} videos in catalog")
     print(f"💾 Database already has {cached_count} saved transcripts")
+    print(f"⏱️  YouTube delay: {MIN_FETCH_DELAY_SECONDS}-{MAX_FETCH_DELAY_SECONDS}s")
     
     success = 0
     skipped = 0
@@ -92,7 +114,12 @@ def main():
             continue
         
         print(f"🔍 Fetching transcript...")
-        transcript_data = fetch_single_transcript(video_id)
+        try:
+            transcript_data = fetch_single_transcript(video_id)
+        except YouTubeIpBlocked as e:
+            print(f"🛑 YouTube blocked this IP ({e}). Stop now, change IP or wait, then rerun.")
+            failed += 1
+            break
         
         if transcript_data:
             save_transcript(collection, transcript_data)
@@ -102,7 +129,7 @@ def main():
             failed += 1
         
         if idx < len(videos):
-            time.sleep(10)
+            wait_before_next_request()
     
     total_count = collection.count_documents({})
     

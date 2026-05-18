@@ -19,11 +19,21 @@ from backend.core.database import connect_to_db, add_video_embeddings, video_exi
 
 # ✅ EXCLUSIVELY use local BGE-M3 embedding model - NO API CALLS EVER
 from sentence_transformers import SentenceTransformer
+import torch
 
 EMBEDDING_MODEL = "BAAI/bge-m3"
+EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cuda")
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "4"))
+
+if not EMBEDDING_DEVICE.startswith("cuda"):
+    raise RuntimeError("CPU embeddings are disabled. Set EMBEDDING_DEVICE to cuda or cuda:0.")
+
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA is not available, and CPU embeddings are disabled.")
+
 print(f"✅ Loading local embedding model: {EMBEDDING_MODEL}")
-model = SentenceTransformer(EMBEDDING_MODEL)
-print("✅ Model loaded successfully, running completely offline")
+model = SentenceTransformer(EMBEDDING_MODEL, device=EMBEDDING_DEVICE)
+print(f"✅ Model loaded successfully on {model.device}, running completely offline")
 
 def generate_embeddings(texts):
     """
@@ -35,10 +45,38 @@ def generate_embeddings(texts):
     
     cleaned = [t.strip() for t in texts if t and t.strip()]
     
-    embeddings = model.encode(cleaned, normalize_embeddings=True)
+    try:
+        embeddings = model.encode(
+            cleaned,
+            batch_size=EMBEDDING_BATCH_SIZE,
+            normalize_embeddings=True,
+            show_progress_bar=True,
+        )
+    except torch.OutOfMemoryError:
+        clear_cuda_cache()
+        if EMBEDDING_BATCH_SIZE == 1:
+            raise RuntimeError("CUDA out of memory with batch size 1. CPU fallback is disabled.")
+        else:
+            print("⚠️  CUDA ran out of memory, retrying with batch size 1")
+            try:
+                embeddings = model.encode(
+                    cleaned,
+                    batch_size=1,
+                    normalize_embeddings=True,
+                    show_progress_bar=True,
+                )
+            except torch.OutOfMemoryError:
+                clear_cuda_cache()
+                raise RuntimeError("CUDA out of memory with batch size 1. CPU fallback is disabled.")
     
     # Return as standard python lists for database compatibility
     return embeddings.tolist()
+
+
+def clear_cuda_cache():
+    """Release reserved GPU memory between videos."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 MAX_CHUNK_DURATION = 10  # Maximum seconds per chunk
@@ -165,6 +203,7 @@ def process_single_video(video_info: Dict, transcript_collection) -> str:
     # Store in database
     added = add_video_embeddings(video_id, title, documents)
     print(f"✅ Successfully imported: {added} chunks stored")
+    clear_cuda_cache()
     
     return "success"
 
