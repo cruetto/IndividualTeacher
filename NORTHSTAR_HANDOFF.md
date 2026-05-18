@@ -179,9 +179,11 @@ Expected important containers:
 northstar-caddy         caddy:2
 northstar-cv-web        nginx:1.27-alpine
 northstar-filebrowser   filebrowser/filebrowser:latest
-northstar-portainer     portainer/portainer-ce:latest
+northstar-minecraft     itzg/minecraft-server
+northstar-status        python:3.13-alpine
 quizzy-backend-1        quizzy-backend
 quizzy-frontend-1       quizzy-frontend
+quizzy-mongo-1          mongodb/mongodb-atlas-local:latest
 quizzy-web-1            nginx:1.27-alpine
 ```
 
@@ -196,6 +198,8 @@ Create if missing:
 ```bash
 docker network create northstar_web || true
 ```
+
+Quizzy owns its `backend`, `frontend`, `mongo`, and `web` services in the IndividualTeacher repo. Only `quizzy-web-1` should join `northstar_web`; Caddy remains in the northstar infra repo.
 
 ## Active Services
 

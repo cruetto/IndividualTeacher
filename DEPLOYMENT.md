@@ -13,9 +13,9 @@ Browser
   -> Cloudflare DNS
   -> Oracle VM northstar, public IP 130.61.33.233
   -> Caddy reverse proxy on ports 80/443
-  -> Docker Compose app proxy on localhost:8080
-  -> Frontend container and backend container
-  -> MongoDB container on the VM
+  -> Quizzy Docker Compose web proxy on localhost:8080
+  -> Frontend and backend containers
+  -> Quizzy MongoDB container on the VM
 ```
 
 The app runs on the Oracle VM in:
@@ -24,7 +24,7 @@ The app runs on the Oracle VM in:
 /opt/northstar/apps/quizzy
 ```
 
-The shared reverse proxy runs in:
+The shared reverse proxy is not part of this repo. It runs from the northstar infra repo in:
 
 ```text
 /opt/northstar/infra/proxy
@@ -56,6 +56,36 @@ Important open ports:
 
 Docker and Docker Compose are installed on the VM.
 
+## Repo Ownership
+
+This repo owns the Quizzy app stack:
+
+```text
+backend
+frontend
+web    app-local Nginx proxy, container name quizzy-web-1 on the VM
+mongo  app-local MongoDB
+```
+
+The northstar infra repo owns shared VM infrastructure:
+
+```text
+Caddy
+shared Docker network
+File Browser
+status service
+Minecraft
+```
+
+The video importer is a separate repo and is not deployed as part of the Quizzy web stack.
+
+The Quizzy Compose stack uses two Docker networks:
+
+```text
+quizzy_internal  private app network for backend, frontend, mongo, and web
+northstar_web    shared external network so Caddy can reach quizzy-web-1
+```
+
 ## Caddy
 
 Caddy is the public HTTPS entrypoint.
@@ -86,11 +116,13 @@ quizzy.attentionisallineed.xyz {
 }
 ```
 
-Quizzy, CV, Portainer, File Browser, and Caddy share the external Docker network:
+Quizzy, CV, File Browser, and Caddy share the external Docker network:
 
 ```text
 northstar_web
 ```
+
+The Quizzy `web` service is the only Quizzy container attached to `northstar_web`. Backend, frontend, and MongoDB stay on the private app network.
 
 Useful commands:
 
@@ -118,6 +150,13 @@ mongo     MongoDB Atlas Local, bound to 127.0.0.1:27017 on the VM
 web       Nginx app proxy, published as localhost:8080 on the VM
 ```
 
+The `web` service belongs in this repo because it is app-specific routing for Quizzy:
+
+```text
+/      -> frontend
+/api/  -> backend
+```
+
 Routing:
 
 ```text
@@ -129,6 +168,7 @@ Useful commands:
 
 ```bash
 cd /opt/northstar/apps/quizzy
+docker network create northstar_web || true
 docker compose ps
 docker compose logs --tail=100 backend
 docker compose logs --tail=100 web
@@ -191,11 +231,11 @@ Do not commit real `.env` files.
 Production env files live only on the VM:
 
 ```text
-/opt/northstar/apps/quizzy/.env
+/opt/northstar/apps/quizzy/frontend/.env
 /opt/northstar/apps/quizzy/backend/.env
 ```
 
-Root `.env` is used by Docker Compose and the frontend build:
+Frontend `.env` is used by the Vite build inside the frontend Docker image:
 
 ```env
 VITE_GOOGLE_CLIENT_ID='your-google-client-id.apps.googleusercontent.com'
@@ -213,7 +253,7 @@ GROQ_API_KEY='your-groq-api-key'
 MONGODB_URI='mongodb://mongo:27017/Quizzes?directConnection=true'
 ```
 
-If the frontend shows `Network Error`, check that `VITE_API_BASE_URL` was set before rebuilding the frontend image.
+If the frontend shows `Network Error`, check that `frontend/.env` has `VITE_API_BASE_URL` set before rebuilding the frontend image.
 
 ## MongoDB
 
@@ -263,6 +303,7 @@ After pushing changes to GitHub:
 ssh -i ssh-key-2026-05-15.key ubuntu@130.61.33.233
 cd /opt/northstar/apps/quizzy
 git pull
+docker network create northstar_web || true
 docker compose up -d --build
 docker compose ps
 ```
@@ -305,16 +346,16 @@ curl -i https://quizzy.attentionisallineed.xyz/api/quizzes?scope=public
 
 `/api/` returning `404` is normal because the backend does not define a generic `/api/` route.
 
-## Future Apps
+## Other Apps
 
-Use the same pattern for more services:
+Other VM apps live in their own repos or in `northstar_infra`, depending on whether they are app-specific or shared infrastructure:
 
 ```text
-cv.attentionisallineed.xyz
-n8n.attentionisallineed.xyz
+cv.attentionisallineed.xyz  separate CV repo
+n8n.attentionisallineed.xyz future app-specific repo or infra-managed service
 ```
 
-Add a DNS record in Cloudflare, run the app in Docker, then add a Caddy route.
+Add a DNS record in Cloudflare, run the app in Docker, then add a Caddy route in the northstar infra repo.
 
 Minecraft is different because it is not HTTP. It usually needs:
 

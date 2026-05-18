@@ -19,12 +19,6 @@ backend:
     source .venv/bin/activate
     python3 app.py
 
-video_importer:
-    cd video_importer
-    source .venv/bin/activate
-    python3 fetch_transcripts.py
-    python3 process_embeddings.py
-
 
 # First initialization
 frontend:
@@ -37,8 +31,18 @@ backend:
     source .venv/bin/activate
     pip install .
 
-video_importer:
-    cd video_importer
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install .
+Production:
+    docker network create northstar_web || true
+    docker compose up -d --build
+
+
+# Repository boundaries
+This repository owns the Quizzy web application:
+- backend
+- frontend
+- app-local Nginx proxy (`web` / `quizzy-web-1`)
+- app-local MongoDB service
+- production Docker Compose wiring
+- example environment files
+
+The video importer is maintained in a separate repository. It connects to the same MongoDB using `MONGODB_URI`, but it is not part of the production web deployment.
