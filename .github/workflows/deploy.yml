@@ -1,0 +1,38 @@
+name: Deploy Quizzy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quizzy-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: northstar_vm
+    steps:
+      - name: Deploy Quizzy on Northstar VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.NORTHSTAR_HOST }}
+          username: ${{ secrets.NORTHSTAR_USER }}
+          key: ${{ secrets.NORTHSTAR_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            cd /opt/northstar/apps/quizzy
+            git pull --ff-only
+
+            docker network inspect northstar_web >/dev/null 2>&1 || docker network create northstar_web
+
+            docker compose up -d --no-recreate mongo
+            docker compose up -d --build --force-recreate backend frontend web
+
+            docker compose ps
